@@ -1,0 +1,131 @@
+---
+import '../styles/global.css';
+import Meta from '../components/seo/Meta.astro';
+import Schema from '../components/seo/Schema.astro';
+import Header from '../components/ui/Header.astro';
+import Footer from '../components/ui/Footer.astro';
+
+interface Props {
+  title: string;
+  description: string;
+  image?: string;
+  article?: boolean;
+  publishedTime?: string;
+  modifiedTime?: string;
+  author?: string;
+  section?: string;
+  tags?: string[];
+  breadcrumbs?: Array<{ name: string; href?: string }>;
+}
+
+const props = Astro.props;
+const siteName = "PlainProcedure";
+const siteUrl = 'https://plainprocedure.com';
+const fullTitle = props.title === siteName ? props.title : `${props.title} | ${siteName}`;
+const canonicalUrl = new URL(Astro.url.pathname, siteUrl).href;
+
+const breadcrumbSchema = (() => {
+  const path = Astro.url.pathname.replace(/\/$/, '');
+  if (path === '' || path === '/') return null;
+  const items = props.breadcrumbs || [
+    { name: 'Home', href: '/' },
+    { name: props.title },
+  ];
+  return JSON.stringify({
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: items.map((item, i) => ({
+      '@type': 'ListItem',
+      position: i + 1,
+      name: item.name,
+      ...(item.href ? { item: new URL(item.href, siteUrl).href } : {}),
+    })),
+  });
+})();
+---
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="PlainProcedure" />
+    <meta name="theme-color" content="#0ea5e9" />
+
+    <Meta
+      title={fullTitle}
+      description={props.description}
+      image={props.image}
+      article={props.article}
+      publishedTime={props.publishedTime}
+      modifiedTime={props.modifiedTime}
+      author={props.author}
+      section={props.section}
+      tags={props.tags}
+    />
+
+    <Schema
+      type={props.article ? 'article' : 'website'}
+      title={fullTitle}
+      description={props.description}
+      url={canonicalUrl}
+      image={props.image}
+      datePublished={props.publishedTime}
+      dateModified={props.modifiedTime}
+      author={props.author}
+      publisher={{ name: siteName }}
+    />
+    {breadcrumbSchema && <script type="application/ld+json" set:html={breadcrumbSchema} />}
+
+    <script is:inline>
+      if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        document.documentElement.classList.add('dark');
+      }
+    </script>
+
+    <!-- Umami Analytics (uncomment when configured) -->
+    <!-- <script defer src="https://analytics.opspixel.com/script.js" data-website-id="YOUR_UMAMI_SITE_ID"></script> -->
+
+    <!-- Consent Mode v2 defaults (uncomment with GA4/AdSense) -->
+    <!-- <script is:inline>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments)}
+      gtag('consent', 'default', {
+        'ad_storage': 'denied',
+        'ad_user_data': 'denied',
+        'ad_personalization': 'denied',
+        'analytics_storage': 'granted',
+        'wait_for_update': 500
+      });
+      gtag('consent', 'default', {
+        'ad_storage': 'granted',
+        'ad_user_data': 'granted',
+        'ad_personalization': 'granted',
+        'analytics_storage': 'granted',
+        'region': ['US']
+      });
+    </script> -->
+
+    <!-- GA4 (uncomment when configured) -->
+    <!-- <script async src="https://www.googletagmanager.com/gtag/js?id=YOUR_GA4_MEASUREMENT_ID"></script> -->
+    <!-- <script is:inline>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','YOUR_GA4_MEASUREMENT_ID');</script> -->
+
+    <!-- AdSense (uncomment when configured) -->
+    <!-- <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7887321168925353" crossorigin="anonymous"></script> -->
+  </head>
+  <body class="min-h-screen flex flex-col">
+    <Header />
+    <main class="flex-1">
+      <slot />
+    </main>
+    <Footer />
+  </body>
+</html>

@@ -1,0 +1,79 @@
+---
+interface Props {
+  type: 'website' | 'article' | 'organization';
+  title: string;
+  description: string;
+  url: string;
+  image?: string;
+  datePublished?: string;
+  dateModified?: string;
+  author?: string;
+  publisher?: {
+    name: string;
+    logo?: string;
+  };
+}
+
+const {
+  type,
+  title,
+  description,
+  url,
+  image,
+  datePublished,
+  dateModified,
+  author,
+  publisher
+} = Astro.props;
+
+const siteUrl = import.meta.env.SITE || 'https://example.com';
+
+let schema: Record<string, any>;
+
+if (type === 'article') {
+  schema = {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": title,
+    "description": description,
+    "url": url,
+    "image": image ? (image.startsWith('http') ? image : `${siteUrl}${image}`) : undefined,
+    "datePublished": datePublished,
+    "dateModified": dateModified || datePublished,
+    "author": {
+      "@type": "Person",
+      "name": author || "Editorial Team"
+    },
+    "publisher": publisher ? {
+      "@type": "Organization",
+      "name": publisher.name,
+      "logo": publisher.logo ? {
+        "@type": "ImageObject",
+        "url": publisher.logo
+      } : undefined
+    } : undefined
+  };
+} else if (type === 'organization') {
+  schema = {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    "name": title,
+    "description": description,
+    "url": url,
+    "logo": image
+  };
+} else {
+  schema = {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    "name": title,
+    "description": description,
+    "url": url
+  };
+}
+
+// Remove undefined values
+const cleanSchema = JSON.parse(JSON.stringify(schema));
+---
+
+<script type="application/ld+json" set:html={JSON.stringify(cleanSchema, null, 0)} />

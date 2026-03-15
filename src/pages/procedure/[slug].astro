@@ -1,0 +1,224 @@
+---
+import Base from '../../layouts/Base.astro';
+import type { D1Database } from '../../lib/d1-adapter';
+import { getProcedureBySlug, getProcedureStatePrices } from '../../lib/db';
+
+const db = (Astro.locals as any).runtime?.env?.DB as D1Database;
+const { slug } = Astro.params;
+const procedure = await getProcedureBySlug(db, slug!);
+if (!procedure) return Astro.redirect('/404');
+
+const statePrices = await getProcedureStatePrices(db, procedure.code);
+
+function fmt(n: number | null): string {
+  if (n == null) return 'N/A';
+  return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function fmtCompact(n: number | null): string {
+  if (n == null) return 'N/A';
+  if (n >= 1_000_000_000) return (n / 1_000_000_000).toFixed(1) + 'B';
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
+  return n.toLocaleString('en-US');
+}
+
+function markupPct(submitted: number | null, medicare: number | null): string {
+  if (!submitted || !medicare || medicare === 0) return 'N/A';
+  return Math.round(((submitted - medicare) / medicare) * 100) + '%';
+}
+
+function markupRatio(submitted: number | null, medicare: number | null): string {
+  if (!submitted || !medicare || medicare === 0) return 'N/A';
+  return (submitted / medicare).toFixed(1) + 'x';
+}
+
+function titleCase(s: string): string {
+  return s.toLowerCase().replace(/(?:^|\s|-)\S/g, c => c.toUpperCase());
+}
+
+const title = titleCase(procedure.description);
+const cheapest = statePrices.length > 0 ? statePrices[statePrices.length - 1] : null;
+const mostExpensive = statePrices.length > 0 ? statePrices[0] : null;
+const siteUrl = 'https://plainprocedure.com';
+---
+
+<Base
+  title={`${title} (${procedure.code}) Cost`}
+  description={`${title} costs ${fmt(procedure.national_avg_medicare_payment)} Medicare payment vs. ${fmt(procedure.national_avg_submitted_charge)} billed. Compare prices across ${statePrices.length} states.`}
+  breadcrumbs={[
+    { name: 'Home', href: '/' },
+    { name: 'Procedures', href: '/procedures/' },
+    { name: procedure.category, href: `/category/${procedure.category.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')}` },
+    { name: title },
+  ]}
+>
+  <section class="py-8 md:py-12">
+    <div class="container">
+      <!-- Header -->
+      <div class="mb-8">
+        <div class="flex items-center gap-2 text-sm text-[var(--color-muted)] mb-2">
+          <a href={`/category/${procedure.category.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')}`} class="hover:text-[var(--color-accent)]">{procedure.category}</a>
+          <span>&middot;</span>
+          <span class="font-mono">{procedure.code}</span>
+          {procedure.is_drug ? <span class="bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300 text-xs px-2 py-0.5 rounded-full">Drug</span> : null}
+        </div>
+        <h1 class="text-3xl md:text-4xl font-bold">{title}</h1>
+      </div>
+
+      <!-- National Price Summary -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+        <div class="card">
+          <div class="text-sm text-[var(--color-muted)] mb-1">Medicare Payment (avg)</div>
+          <div class="text-3xl font-bold text-teal-600 dark:text-teal-400">{fmt(procedure.national_avg_medicare_payment)}</div>
+          <div class="text-xs text-[var(--color-muted)] mt-1">What Medicare actually pays</div>
+        </div>
+        <div class="card">
+          <div class="text-sm text-[var(--color-muted)] mb-1">Billed Charge (avg)</div>
+          <div class="text-3xl font-bold text-amber-600 dark:text-amber-400">{fmt(procedure.national_avg_submitted_charge)}</div>
+          <div class="text-xs text-[var(--color-muted)] mt-1">What providers submit</div>
+        </div>
+        <div class="card">
+          <div class="text-sm text-[var(--color-muted)] mb-1">Markup</div>
+          <div class="text-3xl font-bold text-[var(--color-foreground)]">{markupRatio(procedure.national_avg_submitted_charge, procedure.national_avg_medicare_payment)}</div>
+          <div class="text-xs text-[var(--color-muted)] mt-1">{markupPct(procedure.national_avg_submitted_charge, procedure.national_avg_medicare_payment)} above Medicare rate</div>
+        </div>
+      </div>
+
+      <!-- Quick Stats -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        <div class="card text-center py-3">
+          <div class="text-lg font-bold">{fmtCompact(procedure.national_total_services)}</div>
+          <div class="text-xs text-[var(--color-muted)]">Total Services</div>
+        </div>
+        <div class="card text-center py-3">
+          <div class="text-lg font-bold">{fmtCompact(procedure.national_total_beneficiaries)}</div>
+          <div class="text-xs text-[var(--color-muted)]">Beneficiaries</div>
+        </div>
+        <div class="card text-center py-3">
+          <div class="text-lg font-bold">{fmtCompact(procedure.national_provider_count)}</div>
+          <div class="text-xs text-[var(--color-muted)]">Providers</div>
+        </div>
+        <div class="card text-center py-3">
+          <div class="text-lg font-bold">{statePrices.length}</div>
+          <div class="text-xs text-[var(--color-muted)]">States with Data</div>
+        </div>
+      </div>
+
+      <!-- Price Range -->
+      {procedure.price_range_low != null && procedure.price_range_high != null && (
+        <div class="card mb-8">
+          <h2 class="text-lg font-bold mb-3">Price Range Across States</h2>
+          <div class="flex justify-between items-end mb-2">
+            <div>
+              <div class="text-xs text-[var(--color-muted)]">Lowest State Avg</div>
+              <div class="text-xl font-bold text-teal-600 dark:text-teal-400">{fmt(procedure.price_range_low)}</div>
+              {cheapest && <div class="text-xs text-[var(--color-muted)]">{cheapest.state_name}</div>}
+            </div>
+            <div class="text-right">
+              <div class="text-xs text-[var(--color-muted)]">Highest State Avg</div>
+              <div class="text-xl font-bold text-amber-600 dark:text-amber-400">{fmt(procedure.price_range_high)}</div>
+              {mostExpensive && <div class="text-xs text-[var(--color-muted)]">{mostExpensive.state_name}</div>}
+            </div>
+          </div>
+          <div class="h-3 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+            <div class="h-full bg-gradient-to-r from-teal-500 to-amber-500 rounded-full" style="width: 100%"></div>
+          </div>
+        </div>
+      )}
+
+      <!-- State-by-State Prices -->
+      {statePrices.length > 0 && (
+        <div class="mb-8">
+          <h2 class="text-2xl font-bold mb-4">Prices by State</h2>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-[var(--color-border)]">
+                  <th class="text-left py-3 px-2 font-semibold">State</th>
+                  <th class="text-right py-3 px-2 font-semibold">Medicare Payment</th>
+                  <th class="text-right py-3 px-2 font-semibold">Billed Charge</th>
+                  <th class="text-right py-3 px-2 font-semibold hidden sm:table-cell">Min</th>
+                  <th class="text-right py-3 px-2 font-semibold hidden sm:table-cell">Max</th>
+                  <th class="text-right py-3 px-2 font-semibold hidden md:table-cell">Providers</th>
+                  <th class="text-right py-3 px-2 font-semibold hidden md:table-cell">Services</th>
+                </tr>
+              </thead>
+              <tbody>
+                {statePrices.map(sp => {
+                  const isAboveNat = procedure.national_avg_medicare_payment && sp.avg_medicare_payment
+                    ? sp.avg_medicare_payment > procedure.national_avg_medicare_payment
+                    : false;
+                  return (
+                    <tr class="border-b border-[var(--color-border)] hover:bg-[var(--color-card)]">
+                      <td class="py-2 px-2">
+                        <a href={`/procedure/${slug}/${sp.state.toLowerCase()}`} class="text-[var(--color-accent)] hover:underline">
+                          {sp.state_name}
+                        </a>
+                      </td>
+                      <td class={`py-2 px-2 text-right font-medium ${isAboveNat ? 'text-amber-600 dark:text-amber-400' : 'text-teal-600 dark:text-teal-400'}`}>
+                        {fmt(sp.avg_medicare_payment)}
+                      </td>
+                      <td class="py-2 px-2 text-right text-[var(--color-muted)]">{fmt(sp.avg_submitted_charge)}</td>
+                      <td class="py-2 px-2 text-right hidden sm:table-cell text-[var(--color-muted)]">{fmt(sp.min_payment)}</td>
+                      <td class="py-2 px-2 text-right hidden sm:table-cell text-[var(--color-muted)]">{fmt(sp.max_payment)}</td>
+                      <td class="py-2 px-2 text-right hidden md:table-cell text-[var(--color-muted)]">{fmtCompact(sp.provider_count)}</td>
+                      <td class="py-2 px-2 text-right hidden md:table-cell text-[var(--color-muted)]">{fmtCompact(sp.total_services)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      <!-- FAQ -->
+      <div class="rounded-lg border border-[var(--color-border)] bg-[var(--color-card)] p-6 mb-8">
+        <h2 class="text-xl font-bold">Frequently Asked Questions</h2>
+        <div class="mt-4 divide-y divide-[var(--color-border)]">
+          <details class="group py-4" open>
+            <summary class="flex cursor-pointer items-center justify-between font-medium [&::-webkit-details-marker]:hidden list-none">
+              How much does {title} cost?
+              <svg class="h-5 w-5 shrink-0 text-[var(--color-muted)] transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
+            </summary>
+            <p class="mt-2 text-sm text-[var(--color-muted)]">The national average Medicare payment for {title} (CPT {procedure.code}) is {fmt(procedure.national_avg_medicare_payment)}, while providers typically bill {fmt(procedure.national_avg_submitted_charge)}. Prices vary significantly by state, ranging from {fmt(procedure.price_range_low)} to {fmt(procedure.price_range_high)}.</p>
+          </details>
+          <details class="group py-4">
+            <summary class="flex cursor-pointer items-center justify-between font-medium [&::-webkit-details-marker]:hidden list-none">
+              Why do providers charge more than Medicare pays?
+              <svg class="h-5 w-5 shrink-0 text-[var(--color-muted)] transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
+            </summary>
+            <p class="mt-2 text-sm text-[var(--color-muted)]">Providers set their own chargemaster rates (billed charges), which are typically much higher than what any insurer pays. Medicare pays a fixed rate based on the procedure code and geographic location. The billed charge is relevant mainly for uninsured patients, who may face prices closer to the submitted charge.</p>
+          </details>
+        </div>
+      </div>
+      <script type="application/ld+json" set:html={JSON.stringify({
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": [
+          { "@type": "Question", "name": `How much does ${title} cost?`, "acceptedAnswer": { "@type": "Answer", "text": `The national average Medicare payment for ${title} (CPT ${procedure.code}) is ${fmt(procedure.national_avg_medicare_payment)}, while providers typically bill ${fmt(procedure.national_avg_submitted_charge)}.` } },
+          { "@type": "Question", "name": "Why do providers charge more than Medicare pays?", "acceptedAnswer": { "@type": "Answer", "text": "Providers set their own chargemaster rates which are typically much higher than what any insurer pays. Medicare pays a fixed rate based on the procedure code and geographic location." } }
+        ]
+      })} />
+
+      <!-- Dataset schema -->
+      <script type="application/ld+json" set:html={JSON.stringify({
+        "@context": "https://schema.org",
+        "@type": "Dataset",
+        "name": `${title} (${procedure.code}) Medicare Cost Data`,
+        "description": `Medicare payment and billed charge data for ${title} across ${statePrices.length} states.`,
+        "url": new URL(`/procedure/${slug}`, siteUrl).href,
+        "license": "https://www.usa.gov/government-works",
+        "creator": { "@type": "Organization", "name": "Centers for Medicare & Medicaid Services (CMS)" },
+        "temporalCoverage": "2023",
+        "distribution": { "@type": "DataDownload", "encodingFormat": "text/html", "contentUrl": new URL(`/procedure/${slug}`, siteUrl).href }
+      })} />
+
+      <!-- Cross-link -->
+      <div class="text-sm text-[var(--color-muted)]">
+        <p>Data from <a href="https://data.cms.gov/provider-summary-by-type-of-service/medicare-physician-other-practitioners" class="text-[var(--color-accent)] hover:underline" target="_blank" rel="noopener">CMS Medicare Physician & Other Practitioners</a> (2023).</p>
+      </div>
+    </div>
+  </section>
+</Base>

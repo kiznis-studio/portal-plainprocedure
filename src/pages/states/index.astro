@@ -1,0 +1,63 @@
+---
+import Base from '../../layouts/Base.astro';
+import type { D1Database } from '../../lib/d1-adapter';
+import { getAllStates } from '../../lib/db';
+
+const db = (Astro.locals as any).runtime?.env?.DB as D1Database;
+const states = await getAllStates(db);
+
+function fmt(n: number | null): string {
+  if (n == null) return 'N/A';
+  return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function fmtInt(n: number | null): string {
+  if (n == null) return 'N/A';
+  return n.toLocaleString('en-US');
+}
+---
+
+<Base
+  title="States"
+  description="Compare healthcare procedure costs across 56 US states and territories. See average Medicare payments and hospital counts."
+  breadcrumbs={[{ name: 'Home', href: '/' }, { name: 'States' }]}
+>
+  <section class="py-8 md:py-12">
+    <div class="container">
+      <h1 class="text-3xl font-bold mb-2">States & Territories</h1>
+      <p class="text-[var(--color-muted)] mb-6">{states.length} states and territories with procedure cost data.</p>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-[var(--color-border)]">
+              <th class="text-left py-3 px-2 font-semibold">State</th>
+              <th class="text-right py-3 px-2 font-semibold">Hospitals</th>
+              <th class="text-right py-3 px-2 font-semibold hidden sm:table-cell">Providers</th>
+              <th class="text-right py-3 px-2 font-semibold hidden md:table-cell">Procedures</th>
+              <th class="text-right py-3 px-2 font-semibold">Avg Medicare Payment</th>
+              <th class="text-right py-3 px-2 font-semibold hidden md:table-cell">Avg Billed</th>
+            </tr>
+          </thead>
+          <tbody>
+            {states.map(s => (
+              <tr class="border-b border-[var(--color-border)] hover:bg-[var(--color-card)]">
+                <td class="py-2 px-2">
+                  <a href={`/state/${s.abbr}`} class="text-[var(--color-accent)] hover:underline font-medium">
+                    {s.name}
+                  </a>
+                  <span class="text-xs text-[var(--color-muted)] ml-1">({s.abbr})</span>
+                </td>
+                <td class="py-2 px-2 text-right">{fmtInt(s.hospital_count)}</td>
+                <td class="py-2 px-2 text-right hidden sm:table-cell text-[var(--color-muted)]">{fmtInt(s.provider_count)}</td>
+                <td class="py-2 px-2 text-right hidden md:table-cell text-[var(--color-muted)]">{fmtInt(s.procedure_count)}</td>
+                <td class="py-2 px-2 text-right text-teal-600 dark:text-teal-400">{fmt(s.avg_medicare_payment)}</td>
+                <td class="py-2 px-2 text-right hidden md:table-cell text-amber-600 dark:text-amber-400">{fmt(s.avg_submitted_charge)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</Base>

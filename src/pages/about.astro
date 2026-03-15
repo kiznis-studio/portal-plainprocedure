@@ -1,0 +1,93 @@
+---
+import Base from '../layouts/Base.astro';
+---
+
+<Base
+  title="About PlainProcedure"
+  description="PlainProcedure makes healthcare procedure costs transparent using CMS Medicare data. Free, open data for patients and researchers."
+>
+  <section class="py-8 md:py-12">
+    <div class="max-w-3xl mx-auto px-4 sm:px-6">
+      <h1 class="text-3xl font-bold mb-6">About PlainProcedure</h1>
+      <div class="prose dark:prose-invert max-w-none text-[var(--color-muted)] [&_h2]:text-[var(--color-foreground)] [&_strong]:text-[var(--color-foreground)]">
+        <p>
+          PlainProcedure makes healthcare costs transparent by showing what Medicare actually pays
+          versus what providers charge for over 9,000 medical procedures. We help patients,
+          researchers, and journalists understand price variation across states and providers.
+        </p>
+
+        <h2>Our Data</h2>
+        <p>
+          All data comes directly from the <strong>CMS Medicare Physician & Other Practitioners</strong>
+          dataset for 2023. This includes:
+        </p>
+        <ul>
+          <li><strong>9,297 procedures:</strong> Every CPT/HCPCS code billed to Medicare, with national and state-level pricing</li>
+          <li><strong>5,426 hospitals:</strong> CMS Hospital Compare data including quality ratings and emergency services</li>
+          <li><strong>162,808 providers:</strong> Individual Medicare providers with their procedure volumes and charges</li>
+          <li><strong>198,292 state-level price records:</strong> How procedure costs vary across 56 states and territories</li>
+        </ul>
+
+        <h2>Methodology</h2>
+        <p>
+          We download raw datasets from CMS (data.cms.gov), process them through our ETL pipeline,
+          and organize them into searchable pages. No data is modified, interpolated, or editorialized.
+          Medicare payment amounts reflect the actual average amounts paid by Medicare for each procedure.
+          Submitted charges reflect what providers bill (their "chargemaster" rates).
+        </p>
+
+        <h2>Understanding the Numbers</h2>
+        <p>
+          <strong>Medicare Payment:</strong> What Medicare actually pays the provider. This is a standardized
+          rate based on the procedure code and geographic adjustment factor.
+        </p>
+        <p>
+          <strong>Submitted Charge:</strong> What the provider bills (their list price). This is typically
+          much higher than what any insurer pays. Uninsured patients may be billed closer to this amount.
+        </p>
+        <p>
+          <strong>Markup:</strong> The ratio between the submitted charge and Medicare payment. A 3.0x markup
+          means the billed charge is 3 times the Medicare rate.
+        </p>
+
+        <h2>Updates</h2>
+        <p>
+          CMS releases updated Medicare provider data annually. We update our database when new
+          data becomes available.
+        </p>
+
+        <h2>Not Affiliated</h2>
+        <p>
+          PlainProcedure is not affiliated with CMS, Medicare, or any government agency. We are
+          an independent data portal providing public information in a more accessible format.
+        </p>
+
+        <h2>About Kiznis.Studio</h2>
+        <p>
+          This portal is built and maintained by <strong>Kiznis.Studio</strong>, an independent data
+          publishing studio. We build free, ad-supported portals that make U.S. government data
+          accessible to everyone — no paywalls, no accounts, no data harvesting.
+        </p>
+        <p>
+          Our portals transform raw federal datasets (from agencies like CMS, the Census Bureau, BLS,
+          CDC, EPA, and others) into searchable, well-organized pages that answer real questions
+          people have about their communities, health, finances, and safety.
+        </p>
+
+        <h2>Important Disclaimer</h2>
+        <p>
+          <strong>This site is for informational purposes only and does not provide medical advice.</strong>
+          The data presented comes from government sources and is not a substitute for professional
+          medical consultation. Medicare payment data represents averages and your actual costs may differ
+          based on your insurance, provider, and specific circumstances. Always consult your healthcare
+          provider and insurance company for actual pricing.
+        </p>
+
+        <h2>Contact</h2>
+        <p>
+          For questions or feedback, email <a href="mailto:hello@plainprocedure.com">hello@plainprocedure.com</a>.
+        </p>
+      </div>
+    </div>
+  </section>
+</Base>

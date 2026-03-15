@@ -1,0 +1,157 @@
+---
+import Base from '../../../layouts/Base.astro';
+import type { D1Database } from '../../../lib/d1-adapter';
+import { getProcedureBySlug, getProcedureStatePrice, getStateByAbbr, getProcedureStateProviders } from '../../../lib/db';
+
+const db = (Astro.locals as any).runtime?.env?.DB as D1Database;
+const { slug, state: stateParam } = Astro.params;
+const stateAbbr = stateParam!.toUpperCase();
+
+const procedure = await getProcedureBySlug(db, slug!);
+if (!procedure) return Astro.redirect('/404');
+
+const stateInfo = await getStateByAbbr(db, stateAbbr);
+if (!stateInfo) return Astro.redirect('/404');
+
+const statePrice = await getProcedureStatePrice(db, procedure.code, stateAbbr);
+if (!statePrice) return Astro.redirect('/404');
+
+const providers = await getProcedureStateProviders(db, procedure.code, stateAbbr, 25);
+
+function fmt(n: number | null): string {
+  if (n == null) return 'N/A';
+  return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function fmtCompact(n: number | null): string {
+  if (n == null) return 'N/A';
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
+  return n.toLocaleString('en-US');
+}
+
+function titleCase(s: string): string {
+  return s.toLowerCase().replace(/(?:^|\s|-)\S/g, c => c.toUpperCase());
+}
+
+function truncate(s: string, max: number): string {
+  if (s.length <= max) return s;
+  return s.slice(0, max).replace(/\s+\S*$/, '') + '...';
+}
+
+const procTitle = titleCase(procedure.description);
+const natAvg = procedure.national_avg_medicare_payment;
+const stateAvg = statePrice.avg_medicare_payment;
+const diff = natAvg && stateAvg ? ((stateAvg - natAvg) / natAvg * 100) : null;
+const diffLabel = diff != null ? (diff > 0 ? `${diff.toFixed(0)}% above` : `${Math.abs(diff).toFixed(0)}% below`) : 'N/A';
+const isAbove = diff != null && diff > 0;
+---
+
+<Base
+  title={`${procTitle} Cost in ${stateInfo.name}`}
+  description={`${procTitle} costs ${fmt(stateAvg)} in ${stateInfo.name} (Medicare payment). ${diffLabel} national average. ${providers.length} providers found.`}
+  breadcrumbs={[
+    { name: 'Home', href: '/' },
+    { name: 'Procedures', href: '/procedures/' },
+    { name: procTitle, href: `/procedure/${slug}` },
+    { name: stateInfo.name },
+  ]}
+>
+  <section class="py-8 md:py-12">
+    <div class="container">
+      <div class="mb-6">
+        <div class="flex items-center gap-2 text-sm text-[var(--color-muted)] mb-2">
+          <a href={`/state/${stateAbbr}`} class="hover:text-[var(--color-accent)]">{stateInfo.name}</a>
+          <span>&middot;</span>
+          <span class="font-mono">{procedure.code}</span>
+        </div>
+        <h1 class="text-3xl font-bold">{procTitle} in {stateInfo.name}</h1>
+      </div>
+
+      <!-- Price Comparison -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+        <div class="card">
+          <div class="text-sm text-[var(--color-muted)] mb-1">{stateInfo.name} Medicare Avg</div>
+          <div class={`text-3xl font-bold ${isAbove ? 'text-amber-600 dark:text-amber-400' : 'text-teal-600 dark:text-teal-400'}`}>
+            {fmt(stateAvg)}
+          </div>
+          <div class={`text-xs mt-1 ${isAbove ? 'text-amber-600 dark:text-amber-400' : 'text-teal-600 dark:text-teal-400'}`}>
+            {diffLabel} national avg
+          </div>
+        </div>
+        <div class="card">
+          <div class="text-sm text-[var(--color-muted)] mb-1">National Medicare Avg</div>
+          <div class="text-3xl font-bold text-[var(--color-foreground)]">{fmt(natAvg)}</div>
+          <div class="text-xs text-[var(--color-muted)] mt-1">All states combined</div>
+        </div>
+        <div class="card">
+          <div class="text-sm text-[var(--color-muted)] mb-1">Billed Charge ({stateInfo.abbr})</div>
+          <div class="text-3xl font-bold text-amber-600 dark:text-amber-400">{fmt(statePrice.avg_submitted_charge)}</div>
+          <div class="text-xs text-[var(--color-muted)] mt-1">What providers submit</div>
+        </div>
+      </div>
+
+      <!-- Stats -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        <div class="card text-center py-3">
+          <div class="text-lg font-bold">{fmtCompact(statePrice.total_services)}</div>
+          <div class="text-xs text-[var(--color-muted)]">Services in {stateInfo.abbr}</div>
+        </div>
+        <div class="card text-center py-3">
+          <div class="text-lg font-bold">{fmtCompact(statePrice.provider_count)}</div>
+          <div class="text-xs text-[var(--color-muted)]">Providers</div>
+        </div>
+        <div class="card text-center py-3">
+          <div class="text-lg font-bold">{fmt(statePrice.min_payment)}</div>
+          <div class="text-xs text-[var(--color-muted)]">Min Payment</div>
+        </div>
+        <div class="card text-center py-3">
+          <div class="text-lg font-bold">{fmt(statePrice.max_payment)}</div>
+          <div class="text-xs text-[var(--color-muted)]">Max Payment</div>
+        </div>
+      </div>
+
+      <!-- Top Providers -->
+      {providers.length > 0 && (
+        <div class="mb-8">
+          <h2 class="text-2xl font-bold mb-4">Top Providers in {stateInfo.name}</h2>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-[var(--color-border)]">
+                  <th class="text-left py-3 px-2 font-semibold">Provider</th>
+                  <th class="text-left py-3 px-2 font-semibold hidden sm:table-cell">City</th>
+                  <th class="text-left py-3 px-2 font-semibold hidden md:table-cell">Specialty</th>
+                  <th class="text-right py-3 px-2 font-semibold">Medicare</th>
+                  <th class="text-right py-3 px-2 font-semibold hidden sm:table-cell">Billed</th>
+                  <th class="text-right py-3 px-2 font-semibold">Services</th>
+                </tr>
+              </thead>
+              <tbody>
+                {providers.map(pv => (
+                  <tr class="border-b border-[var(--color-border)] hover:bg-[var(--color-card)]">
+                    <td class="py-2 px-2">
+                      <span class="font-medium">{truncate(pv.provider_name, 35)}</span>
+                      {pv.credentials && <span class="text-xs text-[var(--color-muted)] ml-1">{pv.credentials}</span>}
+                    </td>
+                    <td class="py-2 px-2 hidden sm:table-cell text-[var(--color-muted)]">{pv.provider_city}</td>
+                    <td class="py-2 px-2 hidden md:table-cell text-[var(--color-muted)] text-xs">{pv.provider_type}</td>
+                    <td class="py-2 px-2 text-right text-teal-600 dark:text-teal-400">{fmt(pv.avg_medicare_payment)}</td>
+                    <td class="py-2 px-2 text-right hidden sm:table-cell text-amber-600 dark:text-amber-400">{fmt(pv.avg_submitted_charge)}</td>
+                    <td class="py-2 px-2 text-right text-[var(--color-muted)]">{fmtCompact(pv.total_services)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      <!-- Links -->
+      <div class="flex flex-wrap gap-4 text-sm">
+        <a href={`/procedure/${slug}`} class="text-[var(--color-accent)] hover:underline">&larr; {procTitle} nationwide</a>
+        <a href={`/state/${stateAbbr}`} class="text-[var(--color-accent)] hover:underline">All procedures in {stateInfo.name} &rarr;</a>
+      </div>
+    </div>
+  </section>
+</Base>

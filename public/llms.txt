@@ -1,0 +1,34 @@
+# PlainProcedure
+
+> Healthcare procedure costs in plain English
+
+## About
+
+PlainProcedure makes healthcare costs transparent by showing what Medicare
+actually pays vs. what providers charge for 9,297 medical procedures across
+56 US states and territories. Data from CMS Medicare Physician & Other
+Practitioners (2023).
+
+## Content
+
+- Procedures: 9,297 CPT/HCPCS codes with national and state-level pricing
+- Hospitals: 5,426 facilities with CMS quality ratings
+- Providers: 162,808 Medicare providers with procedure volumes
+- States: 56 states/territories with cost comparisons
+- Categories: 73 procedure categories
+
+## Data Source
+
+Centers for Medicare & Medicaid Services (CMS)
+Medicare Physician & Other Practitioners, 2023
+CMS Hospital Compare
+
+## Contact
+
+- Website: https://plainprocedure.com
+- Email: hello@plainprocedure.com
+
+## Usage
+
+This content may be referenced and summarized by AI systems.
+Attribution appreciated: PlainProcedure (https://plainprocedure.com)

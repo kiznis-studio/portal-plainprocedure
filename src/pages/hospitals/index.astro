@@ -1,0 +1,80 @@
+---
+import Base from '../../layouts/Base.astro';
+import type { D1Database } from '../../lib/d1-adapter';
+import { getAllStates, getHospitalsByState } from '../../lib/db';
+
+const db = (Astro.locals as any).runtime?.env?.DB as D1Database;
+const states = await getAllStates(db);
+const selectedState = Astro.url.searchParams.get('state') || '';
+const hospitals = selectedState ? await getHospitalsByState(db, selectedState.toUpperCase()) : [];
+const selectedStateName = selectedState ? states.find(s => s.abbr === selectedState.toUpperCase())?.name || selectedState : '';
+
+function ratingStars(rating: number | null): string {
+  if (rating == null) return 'Not rated';
+  return '\u2605'.repeat(rating) + '\u2606'.repeat(5 - rating);
+}
+---
+
+<Base
+  title={selectedState ? `Hospitals in ${selectedStateName}` : 'All Hospitals'}
+  description={selectedState ? `Browse ${hospitals.length} hospitals in ${selectedStateName} with ratings, types, and emergency services.` : 'Browse 5,426 hospitals across the United States with CMS quality ratings.'}
+  breadcrumbs={[
+    { name: 'Home', href: '/' },
+    { name: 'Hospitals' },
+    ...(selectedState ? [{ name: selectedStateName }] : []),
+  ]}
+>
+  <section class="py-8 md:py-12">
+    <div class="container">
+      <h1 class="text-3xl font-bold mb-2">{selectedState ? `Hospitals in ${selectedStateName}` : 'Hospitals'}</h1>
+      <p class="text-[var(--color-muted)] mb-6">
+        {selectedState ? `${hospitals.length} hospitals found.` : 'Select a state to view hospitals.'}
+      </p>
+
+      <!-- State selector -->
+      <div class="mb-6 flex flex-wrap gap-2">
+        {states.map(s => (
+          <a href={`/hospitals/?state=${s.abbr.toLowerCase()}`}
+             class={`text-sm px-3 py-1 rounded-full border ${selectedState.toUpperCase() === s.abbr ? 'bg-[var(--color-accent)] text-white border-[var(--color-accent)]' : 'border-[var(--color-border)] text-[var(--color-muted)] hover:text-[var(--color-foreground)]'}`}>
+            {s.abbr}
+          </a>
+        ))}
+      </div>
+
+      {hospitals.length > 0 && (
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-[var(--color-border)]">
+                <th class="text-left py-3 px-2 font-semibold">Hospital</th>
+                <th class="text-left py-3 px-2 font-semibold hidden sm:table-cell">City</th>
+                <th class="text-left py-3 px-2 font-semibold hidden md:table-cell">Type</th>
+                <th class="text-center py-3 px-2 font-semibold">Rating</th>
+                <th class="text-center py-3 px-2 font-semibold hidden sm:table-cell">ER</th>
+              </tr>
+            </thead>
+            <tbody>
+              {hospitals.slice(0, 200).map(h => (
+                <tr class="border-b border-[var(--color-border)] hover:bg-[var(--color-card)]">
+                  <td class="py-2 px-2">
+                    <a href={`/hospital/${h.slug}`} class="text-[var(--color-accent)] hover:underline">{h.name}</a>
+                  </td>
+                  <td class="py-2 px-2 hidden sm:table-cell text-[var(--color-muted)]">{h.city}</td>
+                  <td class="py-2 px-2 hidden md:table-cell text-[var(--color-muted)] text-xs">{h.hospital_type}</td>
+                  <td class="py-2 px-2 text-center text-amber-500">{ratingStars(h.overall_rating)}</td>
+                  <td class="py-2 px-2 text-center hidden sm:table-cell">{h.emergency_services ? '\u2705' : '\u274c'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {!selectedState && (
+        <div class="text-center py-12">
+          <p class="text-lg text-[var(--color-muted)]">Choose a state above to see its hospitals</p>
+        </div>
+      )}
+    </div>
+  </section>
+</Base>

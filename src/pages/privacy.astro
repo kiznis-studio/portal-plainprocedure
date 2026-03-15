@@ -1,0 +1,48 @@
+---
+import Base from '../layouts/Base.astro';
+---
+
+<Base title="Privacy Policy" description="PlainProcedure privacy policy — how we handle your data, cookies, and advertising."
+  breadcrumbs={[{ name: 'Home', href: '/' }, { name: 'Privacy Policy' }]}>
+  <section class="max-w-3xl mx-auto px-4 py-8">
+    <h1 class="text-2xl font-bold">Privacy Policy</h1>
+    <p class="mt-2 text-xs text-[var(--color-muted)]">Last updated: March 15, 2026</p>
+
+    <div class="mt-6 space-y-4 text-sm text-[var(--color-muted)] leading-relaxed">
+      <h2 class="text-lg font-bold text-[var(--color-foreground)]">Information We Collect</h2>
+      <p>PlainProcedure collects minimal data. We use privacy-focused analytics (Umami) that does not use cookies and does not collect personally identifiable information. We track page views, referral sources, and device types in aggregate form only.</p>
+
+      <h2 class="text-lg font-bold text-[var(--color-foreground)]">Cookies & Tracking Technologies</h2>
+      <p>PlainProcedure does not set first-party cookies. However, third-party services used on this site may set cookies:</p>
+      <ul class="list-disc pl-5 space-y-1">
+        <li><strong class="text-[var(--color-foreground)]">Google AdSense</strong> uses cookies to serve ads based on your visits to this and other websites.</li>
+        <li><strong class="text-[var(--color-foreground)]">Cloudflare</strong> may set security cookies to distinguish humans from bots.</li>
+        <li><strong class="text-[var(--color-foreground)]">Google Analytics (GA4)</strong> uses cookies to measure website traffic and usage patterns.</li>
+      </ul>
+      <p>Your browser's light/dark theme preference is stored in localStorage, which never leaves your device.</p>
+
+      <h2 class="text-lg font-bold text-[var(--color-foreground)]">Advertising</h2>
+      <p>We display advertisements through <strong class="text-[var(--color-foreground)]">Google AdSense</strong>. You can opt out of personalized advertising by visiting <a href="https://www.google.com/settings/ads" class="text-[var(--color-accent)] hover:underline" target="_blank" rel="noopener">Google Ads Settings</a>.</p>
+
+      <h2 class="text-lg font-bold text-[var(--color-foreground)]">Data Sources</h2>
+      <p>All data displayed on this site comes from CMS Medicare Physician & Other Practitioners public datasets and CMS Hospital Compare data. No private or proprietary data is used.</p>
+
+      <h2 class="text-lg font-bold text-[var(--color-foreground)]">Third-Party Services</h2>
+      <ul class="list-disc pl-5 space-y-1">
+        <li><strong class="text-[var(--color-foreground)]">Cloudflare</strong> — CDN, security, and hosting</li>
+        <li><strong class="text-[var(--color-foreground)]">Google AdSense</strong> — advertising</li>
+        <li><strong class="text-[var(--color-foreground)]">Google Analytics</strong> — traffic measurement</li>
+        <li><strong class="text-[var(--color-foreground)]">Umami</strong> — privacy-focused, cookie-free analytics</li>
+      </ul>
+
+      <h2 class="text-lg font-bold text-[var(--color-foreground)]">Your Rights</h2>
+      <p>Under GDPR, CCPA, and similar privacy regulations, you have the right to know what data is collected, request deletion, and opt out of personalized advertising.</p>
+
+      <h2 class="text-lg font-bold text-[var(--color-foreground)]">Children's Privacy</h2>
+      <p>PlainProcedure does not knowingly collect information from children under 13.</p>
+
+      <h2 class="text-lg font-bold text-[var(--color-foreground)]">Contact</h2>
+      <p>Questions about this privacy policy can be directed to <a href="mailto:privacy@plainprocedure.com" class="text-[var(--color-accent)] hover:underline">privacy@plainprocedure.com</a>.</p>
+    </div>
+  </section>
+</Base>

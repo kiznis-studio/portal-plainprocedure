@@ -1,0 +1,68 @@
+---
+interface Props {
+  position: 'top' | 'mid' | 'bottom';
+}
+const { position } = Astro.props;
+const format = position === 'mid' ? 'fluid' : 'auto';
+---
+
+<aside class:list={['ad-slot', `ad-slot-${position}`]} aria-label="Advertisement">
+  <div class="ad-slot-inner">
+    <ins class="adsbygoogle"
+      style="display:block"
+      data-ad-client="ca-pub-7887321168925353"
+      data-ad-slot=""
+      data-ad-format={format}
+      data-full-width-responsive="true"
+    ></ins>
+    <script is:inline>
+      (function(){var s=document.currentScript;requestAnimationFrame(function(){if(s.parentElement&&s.parentElement.offsetWidth>0){try{(adsbygoogle=window.adsbygoogle||[]).push({})}catch(e){}}})})();
+    </script>
+  </div>
+</aside>
+
+<style>
+  .ad-slot {
+    width: 100%;
+  }
+
+  .ad-slot-inner {
+    width: 100%;
+    max-width: 1200px;
+    margin-inline: auto;
+    padding-inline: 1rem;
+    min-height: 90px;
+  }
+
+  /* Top: tight margins — don't waste above-fold space */
+  .ad-slot-top {
+    margin-block: 0.75rem;
+  }
+
+  /* Mid: generous margins + subtle separator for visual distinction from content */
+  .ad-slot-mid {
+    margin-block: 2rem;
+    padding-block: 1.5rem;
+    border-top: 1px solid var(--color-border, #e5e7eb);
+    border-bottom: 1px solid var(--color-border, #e5e7eb);
+  }
+
+  /* Bottom: footer-appropriate spacing */
+  .ad-slot-bottom {
+    margin-block: 1.5rem 0.75rem;
+  }
+
+  @media (min-width: 640px) {
+    .ad-slot-inner { padding-inline: 1.5rem; }
+  }
+
+  @media (min-width: 1024px) {
+    .ad-slot-inner { padding-inline: 2rem; }
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .ad-slot-mid {
+      border-color: var(--color-border, #374151);
+    }
+  }
+</style>

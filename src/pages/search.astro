@@ -1,0 +1,115 @@
+---
+import Base from '../layouts/Base.astro';
+import type { D1Database } from '../lib/d1-adapter';
+import { searchProcedures, searchHospitals } from '../lib/db';
+
+const db = (Astro.locals as any).runtime?.env?.DB as D1Database;
+const query = Astro.url.searchParams.get('q') || '';
+const procedures = query.trim() ? await searchProcedures(db, query.trim(), 30) : [];
+const hospitals = query.trim() ? await searchHospitals(db, query.trim(), 15) : [];
+
+function fmt(n: number | null): string {
+  if (n == null) return 'N/A';
+  return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function fmtCompact(n: number | null): string {
+  if (n == null) return 'N/A';
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
+  return n.toLocaleString('en-US');
+}
+
+function titleCase(s: string): string {
+  return s.toLowerCase().replace(/(?:^|\s|-)\S/g, c => c.toUpperCase());
+}
+
+function truncate(s: string, max: number): string {
+  if (s.length <= max) return s;
+  return s.slice(0, max).replace(/\s+\S*$/, '') + '...';
+}
+
+function ratingStars(rating: number | null): string {
+  if (rating == null) return 'Not rated';
+  return '\u2605'.repeat(rating) + '\u2606'.repeat(5 - rating);
+}
+---
+
+<Base
+  title={query ? `Search: ${query}` : 'Search'}
+  description="Search 9,297 medical procedures and 5,426 hospitals for Medicare cost data."
+  breadcrumbs={[{ name: 'Home', href: '/' }, { name: 'Search' }]}
+>
+  <section class="py-8 md:py-12">
+    <div class="container max-w-3xl">
+      <h1 class="text-3xl font-bold mb-6">Search</h1>
+
+      <form action="/search" method="get" class="mb-8">
+        <div class="flex gap-2">
+          <input
+            type="text"
+            name="q"
+            value={query}
+            placeholder="Search procedures by name/code or hospitals by name..."
+            class="input flex-1"
+            autocomplete="off"
+            autofocus
+          />
+          <button type="submit" class="btn btn-primary px-6">Search</button>
+        </div>
+      </form>
+
+      {query && (
+        <p class="text-sm text-[var(--color-muted)] mb-6">
+          {procedures.length} procedure{procedures.length !== 1 ? 's' : ''} and {hospitals.length} hospital{hospitals.length !== 1 ? 's' : ''} for "{query}"
+        </p>
+      )}
+
+      {procedures.length > 0 && (
+        <div class="mb-8">
+          <h2 class="text-xl font-bold mb-3">Procedures</h2>
+          <div class="space-y-2">
+            {procedures.map(p => (
+              <a href={`/procedure/${p.slug}`} class="card flex items-center gap-3 hover:no-underline py-3 px-4">
+                <div class="flex-1 min-w-0">
+                  <div class="font-medium text-[var(--color-foreground)] truncate">{titleCase(p.description)}</div>
+                  <div class="text-xs text-[var(--color-muted)]">{p.code} &middot; {p.category}</div>
+                </div>
+                <div class="text-right">
+                  <div class="text-sm font-medium text-teal-600 dark:text-teal-400">{fmt(p.national_avg_medicare_payment)}</div>
+                  <div class="text-xs text-[var(--color-muted)]">{fmtCompact(p.national_total_services)} services</div>
+                </div>
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {hospitals.length > 0 && (
+        <div class="mb-8">
+          <h2 class="text-xl font-bold mb-3">Hospitals</h2>
+          <div class="space-y-2">
+            {hospitals.map(h => (
+              <a href={`/hospital/${h.slug}`} class="card flex items-center gap-3 hover:no-underline py-3 px-4">
+                <div class="flex-1 min-w-0">
+                  <div class="font-medium text-[var(--color-foreground)] truncate">{h.name}</div>
+                  <div class="text-xs text-[var(--color-muted)]">{h.city}, {h.state} &middot; {h.hospital_type}</div>
+                </div>
+                <div class="text-right text-amber-500 text-sm">
+                  {ratingStars(h.overall_rating)}
+                </div>
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {query && procedures.length === 0 && hospitals.length === 0 && (
+        <div class="text-center py-12">
+          <p class="text-lg text-[var(--color-muted)]">No results found for "{query}"</p>
+          <p class="text-sm text-[var(--color-muted)] mt-2">Try a different search term or <a href="/procedures/" class="text-[var(--color-accent)] hover:underline">browse all procedures</a>.</p>
+        </div>
+      )}
+    </div>
+  </section>
+</Base>

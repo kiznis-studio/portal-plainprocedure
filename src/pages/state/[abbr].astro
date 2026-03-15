@@ -1,0 +1,204 @@
+---
+import Base from '../../layouts/Base.astro';
+import type { D1Database } from '../../lib/d1-adapter';
+import { getStateByAbbr, getHospitalsByState, getStateProcedurePrices, getMostExpensiveInState, getCheapestInState } from '../../lib/db';
+
+const db = (Astro.locals as any).runtime?.env?.DB as D1Database;
+const { abbr } = Astro.params;
+const stateAbbr = abbr!.toUpperCase();
+const state = await getStateByAbbr(db, stateAbbr);
+if (!state) return Astro.redirect('/404');
+
+const hospitals = await getHospitalsByState(db, stateAbbr);
+const topProcedures = await getStateProcedurePrices(db, stateAbbr, 30);
+const mostExpensive = await getMostExpensiveInState(db, stateAbbr, 10);
+const cheapest = await getCheapestInState(db, stateAbbr, 10);
+
+function fmt(n: number | null): string {
+  if (n == null) return 'N/A';
+  return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function fmtInt(n: number | null): string {
+  if (n == null) return 'N/A';
+  return n.toLocaleString('en-US');
+}
+
+function fmtCompact(n: number | null): string {
+  if (n == null) return 'N/A';
+  if (n >= 1_000_000_000) return (n / 1_000_000_000).toFixed(1) + 'B';
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
+  return n.toLocaleString('en-US');
+}
+
+function titleCase(s: string): string {
+  return s.toLowerCase().replace(/(?:^|\s|-)\S/g, c => c.toUpperCase());
+}
+
+function truncate(s: string, max: number): string {
+  if (s.length <= max) return s;
+  return s.slice(0, max).replace(/\s+\S*$/, '') + '...';
+}
+
+function ratingStars(rating: number | null): string {
+  if (rating == null) return '-';
+  return '\u2605'.repeat(rating) + '\u2606'.repeat(5 - rating);
+}
+---
+
+<Base
+  title={`${state.name} Healthcare Costs`}
+  description={`${state.name} has ${fmtInt(state.hospital_count)} hospitals and ${fmtInt(state.provider_count)} Medicare providers. Average Medicare payment: ${fmt(state.avg_medicare_payment)}.`}
+  breadcrumbs={[
+    { name: 'Home', href: '/' },
+    { name: 'States', href: '/states/' },
+    { name: state.name },
+  ]}
+>
+  <section class="py-8 md:py-12">
+    <div class="container">
+      <h1 class="text-3xl md:text-4xl font-bold mb-2">{state.name} ({state.abbr})</h1>
+      <p class="text-[var(--color-muted)] mb-6">Healthcare procedure costs in {state.name}.</p>
+
+      <!-- Stats -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        <div class="card text-center">
+          <div class="text-2xl font-bold text-[var(--color-accent)]">{fmtInt(state.hospital_count)}</div>
+          <div class="text-sm text-[var(--color-muted)]">Hospitals</div>
+        </div>
+        <div class="card text-center">
+          <div class="text-2xl font-bold text-[var(--color-accent)]">{fmtInt(state.provider_count)}</div>
+          <div class="text-sm text-[var(--color-muted)]">Providers</div>
+        </div>
+        <div class="card text-center">
+          <div class="text-2xl font-bold text-teal-600 dark:text-teal-400">{fmt(state.avg_medicare_payment)}</div>
+          <div class="text-sm text-[var(--color-muted)]">Avg Medicare Payment</div>
+        </div>
+        <div class="card text-center">
+          <div class="text-2xl font-bold text-amber-600 dark:text-amber-400">{fmt(state.avg_submitted_charge)}</div>
+          <div class="text-sm text-[var(--color-muted)]">Avg Billed Charge</div>
+        </div>
+      </div>
+
+      <!-- Most Expensive in State -->
+      {mostExpensive.length > 0 && (
+        <div class="mb-8">
+          <h2 class="text-2xl font-bold mb-4">Most Expensive Procedures</h2>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-[var(--color-border)]">
+                  <th class="text-left py-3 px-2 font-semibold">Procedure</th>
+                  <th class="text-right py-3 px-2 font-semibold">Medicare Payment</th>
+                  <th class="text-right py-3 px-2 font-semibold hidden sm:table-cell">Billed</th>
+                </tr>
+              </thead>
+              <tbody>
+                {mostExpensive.map(p => (
+                  <tr class="border-b border-[var(--color-border)] hover:bg-[var(--color-card)]">
+                    <td class="py-2 px-2">
+                      <a href={`/procedure/${p.slug}/${stateAbbr.toLowerCase()}`} class="text-[var(--color-accent)] hover:underline">
+                        {truncate(titleCase(p.description), 50)}
+                      </a>
+                    </td>
+                    <td class="py-2 px-2 text-right font-medium text-amber-600 dark:text-amber-400">{fmt(p.avg_medicare_payment)}</td>
+                    <td class="py-2 px-2 text-right hidden sm:table-cell text-[var(--color-muted)]">{fmt(p.avg_submitted_charge)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      <!-- Cheapest in State -->
+      {cheapest.length > 0 && (
+        <div class="mb-8">
+          <h2 class="text-2xl font-bold mb-4">Least Expensive Procedures</h2>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-[var(--color-border)]">
+                  <th class="text-left py-3 px-2 font-semibold">Procedure</th>
+                  <th class="text-right py-3 px-2 font-semibold">Medicare Payment</th>
+                  <th class="text-right py-3 px-2 font-semibold hidden sm:table-cell">Services</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cheapest.map(p => (
+                  <tr class="border-b border-[var(--color-border)] hover:bg-[var(--color-card)]">
+                    <td class="py-2 px-2">
+                      <a href={`/procedure/${p.slug}/${stateAbbr.toLowerCase()}`} class="text-[var(--color-accent)] hover:underline">
+                        {truncate(titleCase(p.description), 50)}
+                      </a>
+                    </td>
+                    <td class="py-2 px-2 text-right font-medium text-teal-600 dark:text-teal-400">{fmt(p.avg_medicare_payment)}</td>
+                    <td class="py-2 px-2 text-right hidden sm:table-cell text-[var(--color-muted)]">{fmtCompact(p.total_services)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      <!-- Top Procedures -->
+      {topProcedures.length > 0 && (
+        <div class="mb-8">
+          <h2 class="text-2xl font-bold mb-4">Top Procedures by Volume</h2>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-[var(--color-border)]">
+                  <th class="text-left py-3 px-2 font-semibold">Procedure</th>
+                  <th class="text-left py-3 px-2 font-semibold hidden md:table-cell">Category</th>
+                  <th class="text-right py-3 px-2 font-semibold">Medicare</th>
+                  <th class="text-right py-3 px-2 font-semibold hidden sm:table-cell">Billed</th>
+                  <th class="text-right py-3 px-2 font-semibold">Services</th>
+                </tr>
+              </thead>
+              <tbody>
+                {topProcedures.map(p => (
+                  <tr class="border-b border-[var(--color-border)] hover:bg-[var(--color-card)]">
+                    <td class="py-2 px-2">
+                      <a href={`/procedure/${p.slug}/${stateAbbr.toLowerCase()}`} class="text-[var(--color-accent)] hover:underline">
+                        {truncate(titleCase(p.description), 45)}
+                      </a>
+                    </td>
+                    <td class="py-2 px-2 hidden md:table-cell text-[var(--color-muted)] text-xs">{p.category}</td>
+                    <td class="py-2 px-2 text-right text-teal-600 dark:text-teal-400">{fmt(p.avg_medicare_payment)}</td>
+                    <td class="py-2 px-2 text-right hidden sm:table-cell text-amber-600 dark:text-amber-400">{fmt(p.avg_submitted_charge)}</td>
+                    <td class="py-2 px-2 text-right text-[var(--color-muted)]">{fmtCompact(p.total_services)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      <!-- Hospitals -->
+      {hospitals.length > 0 && (
+        <div class="mb-8">
+          <h2 class="text-2xl font-bold mb-4">Hospitals in {state.name}</h2>
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {hospitals.slice(0, 30).map(h => (
+              <a href={`/hospital/${h.slug}`} class="card py-3 hover:no-underline">
+                <div class="font-medium text-[var(--color-foreground)] text-sm">{h.name}</div>
+                <div class="text-xs text-[var(--color-muted)]">{h.city} &middot; {ratingStars(h.overall_rating)}</div>
+              </a>
+            ))}
+          </div>
+          {hospitals.length > 30 && (
+            <p class="text-sm text-[var(--color-muted)] mt-3">
+              <a href={`/hospitals/?state=${stateAbbr.toLowerCase()}`} class="text-[var(--color-accent)] hover:underline">
+                View all {hospitals.length} hospitals in {state.name} &rarr;
+              </a>
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  </section>
+</Base>

@@ -1,0 +1,108 @@
+---
+import Base from '../../layouts/Base.astro';
+import type { D1Database } from '../../lib/d1-adapter';
+import { getHospitalBySlug } from '../../lib/db';
+
+const db = (Astro.locals as any).runtime?.env?.DB as D1Database;
+const { slug } = Astro.params;
+const hospital = await getHospitalBySlug(db, slug!);
+if (!hospital) return Astro.redirect('/404');
+
+function ratingStars(rating: number | null): string {
+  if (rating == null) return 'Not rated';
+  return '\u2605'.repeat(rating) + '\u2606'.repeat(5 - rating);
+}
+
+function measureLabel(better: number, same: number, worse: number): string {
+  const parts: string[] = [];
+  if (better > 0) parts.push(`${better} above avg`);
+  if (same > 0) parts.push(`${same} same as avg`);
+  if (worse > 0) parts.push(`${worse} below avg`);
+  return parts.join(', ') || 'No data';
+}
+---
+
+<Base
+  title={hospital.name}
+  description={`${hospital.name} in ${hospital.city}, ${hospital.state}. ${hospital.hospital_type || 'Hospital'}. Overall rating: ${hospital.overall_rating ?? 'Not rated'}/5 stars.`}
+  breadcrumbs={[
+    { name: 'Home', href: '/' },
+    { name: 'Hospitals', href: '/hospitals/' },
+    { name: hospital.state, href: `/hospitals/?state=${hospital.state.toLowerCase()}` },
+    { name: hospital.name },
+  ]}
+>
+  <section class="py-8 md:py-12">
+    <div class="container">
+      <div class="mb-6">
+        <div class="text-sm text-[var(--color-muted)] mb-2">
+          <a href={`/state/${hospital.state}`} class="hover:text-[var(--color-accent)]">{hospital.state}</a>
+          <span class="mx-1">&middot;</span>
+          {hospital.hospital_type}
+        </div>
+        <h1 class="text-3xl md:text-4xl font-bold">{hospital.name}</h1>
+        <p class="text-[var(--color-muted)] mt-2">{hospital.address}, {hospital.city}, {hospital.state} {hospital.zip}</p>
+      </div>
+
+      <!-- Info Cards -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        <div class="card text-center">
+          <div class="text-2xl text-amber-500">{ratingStars(hospital.overall_rating)}</div>
+          <div class="text-sm text-[var(--color-muted)]">Overall Rating</div>
+        </div>
+        <div class="card text-center">
+          <div class="text-xl font-bold">{hospital.hospital_type || 'N/A'}</div>
+          <div class="text-sm text-[var(--color-muted)]">Type</div>
+        </div>
+        <div class="card text-center">
+          <div class="text-xl font-bold">{hospital.ownership || 'N/A'}</div>
+          <div class="text-sm text-[var(--color-muted)]">Ownership</div>
+        </div>
+        <div class="card text-center">
+          <div class="text-xl font-bold">{hospital.emergency_services ? 'Yes' : 'No'}</div>
+          <div class="text-sm text-[var(--color-muted)]">Emergency Services</div>
+        </div>
+      </div>
+
+      <!-- Quality Measures -->
+      <div class="card mb-8">
+        <h2 class="text-xl font-bold mb-4">Quality Measures</h2>
+        <div class="space-y-4">
+          <div>
+            <div class="text-sm font-medium mb-1">Mortality</div>
+            <div class="text-sm text-[var(--color-muted)]">{measureLabel(hospital.mortality_better, hospital.mortality_same, hospital.mortality_worse)}</div>
+          </div>
+          <div>
+            <div class="text-sm font-medium mb-1">Patient Safety</div>
+            <div class="text-sm text-[var(--color-muted)]">{measureLabel(hospital.safety_better, hospital.safety_same, hospital.safety_worse)}</div>
+          </div>
+          <div>
+            <div class="text-sm font-medium mb-1">Readmission</div>
+            <div class="text-sm text-[var(--color-muted)]">{measureLabel(hospital.readmission_better, hospital.readmission_same, hospital.readmission_worse)}</div>
+          </div>
+          {hospital.birthing_friendly ? (
+            <div class="text-sm">
+              <span class="bg-pink-100 dark:bg-pink-900 text-pink-700 dark:text-pink-300 px-2 py-0.5 rounded-full text-xs font-medium">Birthing Friendly</span>
+            </div>
+          ) : null}
+        </div>
+      </div>
+
+      <!-- Contact -->
+      {hospital.phone && (
+        <div class="card mb-8">
+          <h2 class="text-xl font-bold mb-2">Contact</h2>
+          <p class="text-[var(--color-muted)]">{hospital.phone}</p>
+          <p class="text-[var(--color-muted)]">{hospital.address}, {hospital.city}, {hospital.state} {hospital.zip}</p>
+        </div>
+      )}
+
+      <!-- Links -->
+      <div class="flex flex-wrap gap-4 text-sm">
+        <a href={`/hospitals/?state=${hospital.state.toLowerCase()}`} class="text-[var(--color-accent)] hover:underline">&larr; All hospitals in {hospital.state}</a>
+        <a href={`/state/${hospital.state}`} class="text-[var(--color-accent)] hover:underline">Procedure costs in {hospital.state} &rarr;</a>
+        <a href={`https://plainhospital.com/hospital/${hospital.slug}`} class="text-[var(--color-accent)] hover:underline" target="_blank" rel="noopener">Quality ratings at PlainHospital &rarr;</a>
+      </div>
+    </div>
+  </section>
+</Base>

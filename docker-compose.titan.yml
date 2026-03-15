@@ -1,0 +1,25 @@
+services:
+  portal-plainprocedure:
+    image: ghcr.io/kiznis-studio/portal-plainprocedure:latest
+    container_name: portal-plainprocedure
+    restart: unless-stopped
+    volumes:
+      - /opt/portals/data/sqlite/plainprocedure.db:/data/portal.db
+    environment:
+      - PORT=4321
+      - HOST=0.0.0.0
+      - DATABASE_PATH=/data/portal.db
+      - CACHE_ENTRIES=5000
+      - WORKERS=1
+      - WORKERS_MAX=4
+      - MGMT_PORT=4322
+      - MAX_BOT_CONCURRENT=25
+    networks:
+      - portals
+    mem_limit: 512m
+    cpus: 0.5
+
+networks:
+  portals:
+    external: true
+    name: portals-net

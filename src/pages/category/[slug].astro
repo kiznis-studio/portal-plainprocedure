@@ -1,0 +1,90 @@
+---
+import Base from '../../layouts/Base.astro';
+import type { D1Database } from '../../lib/d1-adapter';
+import { getCategoryBySlug, getProceduresByCategory } from '../../lib/db';
+
+const db = (Astro.locals as any).runtime?.env?.DB as D1Database;
+const { slug } = Astro.params;
+const category = await getCategoryBySlug(db, slug!);
+if (!category) return Astro.redirect('/404');
+
+const procedures = await getProceduresByCategory(db, category.name);
+
+function fmt(n: number | null): string {
+  if (n == null) return 'N/A';
+  return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function fmtCompact(n: number | null): string {
+  if (n == null) return 'N/A';
+  if (n >= 1_000_000_000) return (n / 1_000_000_000).toFixed(1) + 'B';
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
+  return n.toLocaleString('en-US');
+}
+
+function markupRatio(submitted: number | null, medicare: number | null): string {
+  if (!submitted || !medicare || medicare === 0) return 'N/A';
+  return (submitted / medicare).toFixed(1) + 'x';
+}
+
+function titleCase(s: string): string {
+  return s.toLowerCase().replace(/(?:^|\s|-)\S/g, c => c.toUpperCase());
+}
+
+function truncate(s: string, max: number): string {
+  if (s.length <= max) return s;
+  return s.slice(0, max).replace(/\s+\S*$/, '') + '...';
+}
+---
+
+<Base
+  title={`${category.name} Procedures`}
+  description={`Browse ${category.procedure_count} ${category.name.toLowerCase()} procedures with Medicare payment data. ${category.description || ''}`}
+  breadcrumbs={[
+    { name: 'Home', href: '/' },
+    { name: 'Procedures', href: '/procedures/' },
+    { name: category.name },
+  ]}
+>
+  <section class="py-8 md:py-12">
+    <div class="container">
+      <h1 class="text-3xl font-bold mb-2">{category.name}</h1>
+      {category.description && <p class="text-[var(--color-muted)] mb-2">{category.description}</p>}
+      <p class="text-[var(--color-muted)] mb-6">
+        {category.procedure_count} procedures &middot; Avg Medicare payment: {fmt(category.avg_medicare_payment)}
+      </p>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-[var(--color-border)]">
+              <th class="text-left py-3 px-2 font-semibold">Code</th>
+              <th class="text-left py-3 px-2 font-semibold">Procedure</th>
+              <th class="text-right py-3 px-2 font-semibold">Medicare</th>
+              <th class="text-right py-3 px-2 font-semibold">Billed</th>
+              <th class="text-right py-3 px-2 font-semibold hidden sm:table-cell">Markup</th>
+              <th class="text-right py-3 px-2 font-semibold hidden md:table-cell">Services</th>
+            </tr>
+          </thead>
+          <tbody>
+            {procedures.map(p => (
+              <tr class="border-b border-[var(--color-border)] hover:bg-[var(--color-card)]">
+                <td class="py-2 px-2 font-mono text-xs">{p.code}</td>
+                <td class="py-2 px-2">
+                  <a href={`/procedure/${p.slug}`} class="text-[var(--color-accent)] hover:underline">
+                    {truncate(titleCase(p.description), 55)}
+                  </a>
+                </td>
+                <td class="py-2 px-2 text-right text-teal-600 dark:text-teal-400">{fmt(p.national_avg_medicare_payment)}</td>
+                <td class="py-2 px-2 text-right text-amber-600 dark:text-amber-400">{fmt(p.national_avg_submitted_charge)}</td>
+                <td class="py-2 px-2 text-right hidden sm:table-cell text-[var(--color-muted)]">{markupRatio(p.national_avg_submitted_charge, p.national_avg_medicare_payment)}</td>
+                <td class="py-2 px-2 text-right hidden md:table-cell text-[var(--color-muted)]">{fmtCompact(p.national_total_services)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</Base>

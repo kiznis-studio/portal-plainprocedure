@@ -1,0 +1,262 @@
+---
+import Base from '../layouts/Base.astro';
+import type { D1Database } from '../lib/d1-adapter';
+import { getStats, getTopProcedures, getAllCategories, getWidestPriceRange, getAllStates } from '../lib/db';
+
+const db = (Astro.locals as any).runtime?.env?.DB as D1Database;
+const stats = await getStats(db);
+const statMap = Object.fromEntries(stats.map(s => [s.key, s.value]));
+const topProcedures = await getTopProcedures(db, 10);
+const categories = await getAllCategories(db);
+const priceVariation = await getWidestPriceRange(db, 5);
+const states = await getAllStates(db);
+
+function fmt(n: number | null): string {
+  if (n == null) return 'N/A';
+  return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function fmtInt(n: number | null): string {
+  if (n == null) return 'N/A';
+  return n.toLocaleString('en-US');
+}
+
+function fmtCompact(n: number | null): string {
+  if (n == null) return 'N/A';
+  if (n >= 1_000_000_000) return (n / 1_000_000_000).toFixed(1) + 'B';
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
+  return n.toString();
+}
+
+function markupRatio(submitted: number | null, medicare: number | null): string {
+  if (!submitted || !medicare || medicare === 0) return 'N/A';
+  return (submitted / medicare).toFixed(1) + 'x';
+}
+
+function titleCase(s: string): string {
+  return s.toLowerCase().replace(/(?:^|\s|-)\S/g, c => c.toUpperCase());
+}
+
+function truncate(s: string, max: number): string {
+  if (s.length <= max) return s;
+  return s.slice(0, max).replace(/\s+\S*$/, '') + '...';
+}
+
+const topCategories = categories.slice(0, 12);
+const siteName = "PlainProcedure";
+const siteDescription = "Healthcare procedure costs in plain English. Compare Medicare payments, billed charges, and price variation across 9,297 procedures and 56 states.";
+---
+
+<Base title={siteName} description={siteDescription}>
+  <!-- Hero Section -->
+  <section class="py-12 md:py-20 bg-gradient-to-b from-sky-50 to-white dark:from-sky-950/20 dark:to-[var(--color-background)]">
+    <div class="container">
+      <div class="max-w-3xl">
+        <h1 class="text-4xl md:text-5xl font-bold mb-4">
+          What does your procedure <span class="text-[var(--color-accent)]">really</span> cost?
+        </h1>
+        <p class="text-xl text-[var(--color-muted)] mb-8">
+          Compare Medicare payments vs. billed charges for {fmtInt(parseInt(statMap.total_procedures || '0'))} medical
+          procedures across {fmtInt(parseInt(statMap.total_states || '0'))} states. Data from CMS, updated for 2023.
+        </p>
+
+        <form action="/search" method="get" class="flex gap-2 max-w-lg">
+          <input
+            type="text"
+            name="q"
+            placeholder="Search procedures by name or code..."
+            class="input flex-1"
+            autocomplete="off"
+          />
+          <button type="submit" class="btn btn-primary px-6">Search</button>
+        </form>
+      </div>
+
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-10">
+        <div class="card text-center">
+          <div class="text-2xl font-bold text-[var(--color-accent)]">{fmtInt(parseInt(statMap.total_procedures || '0'))}</div>
+          <div class="text-sm text-[var(--color-muted)]">Procedures</div>
+        </div>
+        <div class="card text-center">
+          <div class="text-2xl font-bold text-[var(--color-accent)]">{fmtInt(parseInt(statMap.total_hospitals || '0'))}</div>
+          <div class="text-sm text-[var(--color-muted)]">Hospitals</div>
+        </div>
+        <div class="card text-center">
+          <div class="text-2xl font-bold text-[var(--color-accent)]">{fmtInt(parseInt(statMap.total_providers || '0'))}</div>
+          <div class="text-sm text-[var(--color-muted)]">Providers</div>
+        </div>
+        <div class="card text-center">
+          <div class="text-2xl font-bold text-[var(--color-accent)]">{fmtInt(parseInt(statMap.total_states || '0'))}</div>
+          <div class="text-sm text-[var(--color-muted)]">States & Territories</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Top 10 Most Common Procedures -->
+  <section class="py-8 md:py-12">
+    <div class="container">
+      <h2 class="text-2xl font-bold mb-2">Most Common Procedures</h2>
+      <p class="text-[var(--color-muted)] mb-6">Top 10 by total Medicare services performed in 2023.</p>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-[var(--color-border)]">
+              <th class="text-left py-3 px-2 font-semibold">Code</th>
+              <th class="text-left py-3 px-2 font-semibold">Procedure</th>
+              <th class="text-right py-3 px-2 font-semibold">Medicare Pays</th>
+              <th class="text-right py-3 px-2 font-semibold">Billed</th>
+              <th class="text-right py-3 px-2 font-semibold hidden sm:table-cell">Markup</th>
+              <th class="text-right py-3 px-2 font-semibold hidden md:table-cell">Services</th>
+            </tr>
+          </thead>
+          <tbody>
+            {topProcedures.map(p => (
+              <tr class="border-b border-[var(--color-border)] hover:bg-[var(--color-card)]">
+                <td class="py-3 px-2 font-mono text-xs">{p.code}</td>
+                <td class="py-3 px-2">
+                  <a href={`/procedure/${p.slug}`} class="text-[var(--color-accent)] hover:underline">
+                    {truncate(titleCase(p.description), 60)}
+                  </a>
+                </td>
+                <td class="py-3 px-2 text-right font-medium text-teal-600 dark:text-teal-400">{fmt(p.national_avg_medicare_payment)}</td>
+                <td class="py-3 px-2 text-right text-amber-600 dark:text-amber-400">{fmt(p.national_avg_submitted_charge)}</td>
+                <td class="py-3 px-2 text-right hidden sm:table-cell text-[var(--color-muted)]">{markupRatio(p.national_avg_submitted_charge, p.national_avg_medicare_payment)}</td>
+                <td class="py-3 px-2 text-right hidden md:table-cell text-[var(--color-muted)]">{fmtCompact(p.national_total_services)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div class="mt-4">
+        <a href="/procedures/" class="text-[var(--color-accent)] hover:underline text-sm font-medium">View all {fmtInt(parseInt(statMap.total_procedures || '0'))} procedures &rarr;</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Browse by Category -->
+  <section class="py-8 md:py-12 bg-[var(--color-card)]">
+    <div class="container">
+      <h2 class="text-2xl font-bold mb-2">Browse by Category</h2>
+      <p class="text-[var(--color-muted)] mb-6">{categories.length} procedure categories covering all of medicine.</p>
+
+      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        {topCategories.map(cat => (
+          <a href={`/category/${cat.slug}`} class="card hover:no-underline group">
+            <div class="font-medium text-[var(--color-foreground)] group-hover:text-[var(--color-accent)]">{cat.name}</div>
+            <div class="text-sm text-[var(--color-muted)] mt-1">{fmtInt(cat.procedure_count)} procedures</div>
+            {cat.avg_medicare_payment && (
+              <div class="text-xs text-[var(--color-muted)] mt-1">Avg: {fmt(cat.avg_medicare_payment)}</div>
+            )}
+          </a>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <!-- Price Variation Spotlight -->
+  <section class="py-8 md:py-12">
+    <div class="container">
+      <h2 class="text-2xl font-bold mb-2">Same Procedure, Different Price</h2>
+      <p class="text-[var(--color-muted)] mb-6">The biggest price spreads between what Medicare pays in different states.</p>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {priceVariation.map(p => (
+          <a href={`/procedure/${p.slug}`} class="card hover:no-underline">
+            <div class="font-medium text-[var(--color-foreground)] mb-2">{truncate(titleCase(p.description), 50)}</div>
+            <div class="flex justify-between items-end">
+              <div>
+                <div class="text-xs text-[var(--color-muted)]">Low</div>
+                <div class="text-lg font-bold text-teal-600 dark:text-teal-400">{fmt(p.price_range_low)}</div>
+              </div>
+              <div class="text-[var(--color-muted)] text-xs px-2">&rarr;</div>
+              <div class="text-right">
+                <div class="text-xs text-[var(--color-muted)]">High</div>
+                <div class="text-lg font-bold text-amber-600 dark:text-amber-400">{fmt(p.price_range_high)}</div>
+              </div>
+            </div>
+            <div class="mt-2 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+              <div class="h-full bg-gradient-to-r from-teal-500 to-amber-500 rounded-full" style="width: 100%"></div>
+            </div>
+          </a>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <!-- States Grid -->
+  <section class="py-8 md:py-12 bg-[var(--color-card)]">
+    <div class="container">
+      <h2 class="text-2xl font-bold mb-2">Browse by State</h2>
+      <p class="text-[var(--color-muted)] mb-6">Procedure costs by state and territory.</p>
+
+      <div class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
+        {states.map(s => (
+          <a href={`/state/${s.abbr}`} class="card text-center py-3 px-2 hover:no-underline group">
+            <div class="font-bold text-lg text-[var(--color-foreground)] group-hover:text-[var(--color-accent)]">{s.abbr}</div>
+            <div class="text-xs text-[var(--color-muted)] truncate">{s.name}</div>
+          </a>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section class="py-8 md:py-12">
+    <div class="container max-w-3xl">
+      <div class="rounded-lg border border-[var(--color-border)] bg-[var(--color-card)] p-6">
+        <h2 class="text-xl font-bold">Frequently Asked Questions</h2>
+        <div class="mt-4 divide-y divide-[var(--color-border)]">
+          <details class="group py-4" open>
+            <summary class="flex cursor-pointer items-center justify-between font-medium [&::-webkit-details-marker]:hidden list-none">
+              What is PlainProcedure?
+              <svg class="h-5 w-5 shrink-0 text-[var(--color-muted)] transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+              </svg>
+            </summary>
+            <p class="mt-2 text-sm text-[var(--color-muted)]">PlainProcedure makes healthcare costs transparent by showing what Medicare actually pays vs. what providers charge for 9,297 medical procedures. We help you understand price variation across states and providers.</p>
+          </details>
+          <details class="group py-4">
+            <summary class="flex cursor-pointer items-center justify-between font-medium [&::-webkit-details-marker]:hidden list-none">
+              Where does this data come from?
+              <svg class="h-5 w-5 shrink-0 text-[var(--color-muted)] transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+              </svg>
+            </summary>
+            <p class="mt-2 text-sm text-[var(--color-muted)]">All data comes from the CMS Medicare Physician & Other Practitioners dataset for 2023. This includes actual payment amounts, submitted charges, and utilization data for every procedure performed by Medicare providers.</p>
+          </details>
+          <details class="group py-4">
+            <summary class="flex cursor-pointer items-center justify-between font-medium [&::-webkit-details-marker]:hidden list-none">
+              What is the difference between Medicare payment and billed charge?
+              <svg class="h-5 w-5 shrink-0 text-[var(--color-muted)] transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+              </svg>
+            </summary>
+            <p class="mt-2 text-sm text-[var(--color-muted)]">The Medicare payment is what the government actually pays for a procedure. The billed charge (submitted charge) is what the provider bills. The difference, or markup, shows how much above the Medicare rate a provider charges. Patients without insurance may be billed closer to the submitted charge.</p>
+          </details>
+          <details class="group py-4">
+            <summary class="flex cursor-pointer items-center justify-between font-medium [&::-webkit-details-marker]:hidden list-none">
+              Is this free to use?
+              <svg class="h-5 w-5 shrink-0 text-[var(--color-muted)] transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+              </svg>
+            </summary>
+            <p class="mt-2 text-sm text-[var(--color-muted)]">Yes. All data and tools are completely free to use. CMS data is public domain.</p>
+          </details>
+        </div>
+      </div>
+    </div>
+  </section>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      { "@type": "Question", "name": "What is PlainProcedure?", "acceptedAnswer": { "@type": "Answer", "text": "PlainProcedure makes healthcare costs transparent by showing what Medicare actually pays vs. what providers charge for 9,297 medical procedures." } },
+      { "@type": "Question", "name": "Where does this data come from?", "acceptedAnswer": { "@type": "Answer", "text": "All data comes from the CMS Medicare Physician & Other Practitioners dataset for 2023." } },
+      { "@type": "Question", "name": "What is the difference between Medicare payment and billed charge?", "acceptedAnswer": { "@type": "Answer", "text": "The Medicare payment is what the government actually pays. The billed charge is what the provider bills. The markup shows how much above the Medicare rate a provider charges." } },
+      { "@type": "Question", "name": "Is this free to use?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. All data and tools are completely free to use. CMS data is public domain." } }
+    ]
+  })} />
+</Base>

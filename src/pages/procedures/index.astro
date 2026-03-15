@@ -1,0 +1,101 @@
+---
+import Base from '../../layouts/Base.astro';
+import type { D1Database } from '../../lib/d1-adapter';
+import { getAllProcedures, getAllCategories } from '../../lib/db';
+
+const db = (Astro.locals as any).runtime?.env?.DB as D1Database;
+const procedures = await getAllProcedures(db);
+const categories = await getAllCategories(db);
+const selectedCat = Astro.url.searchParams.get('category') || '';
+const filtered = selectedCat ? procedures.filter(p => p.category === selectedCat) : procedures;
+
+function fmt(n: number | null): string {
+  if (n == null) return 'N/A';
+  return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function fmtCompact(n: number | null): string {
+  if (n == null) return 'N/A';
+  if (n >= 1_000_000_000) return (n / 1_000_000_000).toFixed(1) + 'B';
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
+  return n.toString();
+}
+
+function markupRatio(submitted: number | null, medicare: number | null): string {
+  if (!submitted || !medicare || medicare === 0) return 'N/A';
+  return (submitted / medicare).toFixed(1) + 'x';
+}
+
+function titleCase(s: string): string {
+  return s.toLowerCase().replace(/(?:^|\s|-)\S/g, c => c.toUpperCase());
+}
+
+function truncate(s: string, max: number): string {
+  if (s.length <= max) return s;
+  return s.slice(0, max).replace(/\s+\S*$/, '') + '...';
+}
+---
+
+<Base
+  title="All Procedures"
+  description={`Browse ${procedures.length.toLocaleString()} medical procedures with Medicare payment and billed charge data from CMS 2023.`}
+  breadcrumbs={[{ name: 'Home', href: '/' }, { name: 'Procedures' }]}
+>
+  <section class="py-8 md:py-12">
+    <div class="container">
+      <h1 class="text-3xl font-bold mb-2">Medical Procedures</h1>
+      <p class="text-[var(--color-muted)] mb-6">
+        {filtered.length.toLocaleString()} procedures{selectedCat ? ` in ${selectedCat}` : ''}.
+        Medicare payment vs. billed charge comparison.
+      </p>
+
+      <!-- Category filter -->
+      <div class="mb-6 flex flex-wrap gap-2">
+        <a href="/procedures/" class={`text-sm px-3 py-1 rounded-full border ${!selectedCat ? 'bg-[var(--color-accent)] text-white border-[var(--color-accent)]' : 'border-[var(--color-border)] text-[var(--color-muted)] hover:text-[var(--color-foreground)]'}`}>All</a>
+        {categories.slice(0, 20).map(cat => (
+          <a href={`/procedures/?category=${encodeURIComponent(cat.name)}`}
+             class={`text-sm px-3 py-1 rounded-full border ${selectedCat === cat.name ? 'bg-[var(--color-accent)] text-white border-[var(--color-accent)]' : 'border-[var(--color-border)] text-[var(--color-muted)] hover:text-[var(--color-foreground)]'}`}>
+            {cat.name}
+          </a>
+        ))}
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-[var(--color-border)]">
+              <th class="text-left py-3 px-2 font-semibold">Code</th>
+              <th class="text-left py-3 px-2 font-semibold">Procedure</th>
+              <th class="text-left py-3 px-2 font-semibold hidden lg:table-cell">Category</th>
+              <th class="text-right py-3 px-2 font-semibold">Medicare</th>
+              <th class="text-right py-3 px-2 font-semibold">Billed</th>
+              <th class="text-right py-3 px-2 font-semibold hidden sm:table-cell">Markup</th>
+              <th class="text-right py-3 px-2 font-semibold hidden md:table-cell">Services</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.slice(0, 200).map(p => (
+              <tr class="border-b border-[var(--color-border)] hover:bg-[var(--color-card)]">
+                <td class="py-2 px-2 font-mono text-xs">{p.code}</td>
+                <td class="py-2 px-2">
+                  <a href={`/procedure/${p.slug}`} class="text-[var(--color-accent)] hover:underline">
+                    {truncate(titleCase(p.description), 55)}
+                  </a>
+                </td>
+                <td class="py-2 px-2 hidden lg:table-cell text-[var(--color-muted)] text-xs">{p.category}</td>
+                <td class="py-2 px-2 text-right text-teal-600 dark:text-teal-400">{fmt(p.national_avg_medicare_payment)}</td>
+                <td class="py-2 px-2 text-right text-amber-600 dark:text-amber-400">{fmt(p.national_avg_submitted_charge)}</td>
+                <td class="py-2 px-2 text-right hidden sm:table-cell text-[var(--color-muted)]">{markupRatio(p.national_avg_submitted_charge, p.national_avg_medicare_payment)}</td>
+                <td class="py-2 px-2 text-right hidden md:table-cell text-[var(--color-muted)]">{fmtCompact(p.national_total_services)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {filtered.length > 200 && (
+        <p class="text-sm text-[var(--color-muted)] mt-4">Showing top 200 of {filtered.length.toLocaleString()} procedures. Use search or category filters to narrow results.</p>
+      )}
+    </div>
+  </section>
+</Base>
