@@ -94,32 +94,51 @@ const breadcrumbSchema = (() => {
 
     <!-- Umami Analytics -->
     <script defer src="https://analytics.opspixel.com/script.js" data-website-id="a611a8cf-f837-4db1-9afb-9e745299c785"></script>
+    <!-- Google Privacy & Messaging API (enables consent banners configured in AdSense console) -->
+    <script is:inline>
+      window.googlefc = window.googlefc || {};
+      window.googlefc.callbackQueue = window.googlefc.callbackQueue || [];
+    </script>
 
-    <!-- Consent Mode v2 defaults (MUST be before gtag/adsense) -->
+    <!-- Google Consent Mode v2 — MUST fire before any Google tags load
+         Docs: https://developers.google.com/tag-platform/security/guides/consent
+         Script order: googlefc init → consent defaults → gtag.js → gtag config → adsbygoogle.js -->
     <script is:inline>
       window.dataLayer = window.dataLayer || [];
       function gtag(){dataLayer.push(arguments)}
+
+      // Global default: DENY ad-related consent (GDPR-safe for EU/EEA/UK/CH)
+      // Google's Privacy & Messaging will show consent banner and call gtag('consent','update') on accept
       gtag('consent', 'default', {
         'ad_storage': 'denied',
         'ad_user_data': 'denied',
         'ad_personalization': 'denied',
         'analytics_storage': 'granted',
+        'functionality_storage': 'granted',
+        'personalization_storage': 'denied',
+        'security_storage': 'granted',
         'wait_for_update': 500
       });
+
+      // US: CCPA/CPRA is opt-out model — default granted, user opts out via "Do Not Sell" message
       gtag('consent', 'default', {
         'ad_storage': 'granted',
         'ad_user_data': 'granted',
         'ad_personalization': 'granted',
         'analytics_storage': 'granted',
+        'personalization_storage': 'granted',
         'region': ['US']
       });
+
+      // Advanced: preserve measurement even when consent denied
+      gtag('set', 'url_passthrough', true);
+      gtag('set', 'ads_data_redaction', true);
     </script>
 
-    <!-- GA4 -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-FZPRWG52V3"></script>
-    <script is:inline>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-FZPRWG52V3');</script>
+    <script is:inline>gtag('js',new Date());gtag('config','G-FZPRWG52V3');</script>
 
-    <!-- AdSense -->
+    <!-- AdSense (also deploys Privacy & Messaging consent banners configured in AdSense console) -->
     <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7887321168925353" crossorigin="anonymous"></script>
   </head>
   <body class="min-h-screen flex flex-col">
