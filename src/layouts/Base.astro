@@ -4,6 +4,7 @@ import Meta from '../components/seo/Meta.astro';
 import Schema from '../components/seo/Schema.astro';
 import Header from '../components/ui/Header.astro';
 import Footer from '../components/ui/Footer.astro';
+import AdSlot from '../components/ads/AdSlot.astro';
 
 interface Props {
   title: string;
@@ -91,11 +92,11 @@ const breadcrumbSchema = (() => {
       }
     </script>
 
-    <!-- Umami Analytics (uncomment when configured) -->
-    <!-- <script defer src="https://analytics.opspixel.com/script.js" data-website-id="YOUR_UMAMI_SITE_ID"></script> -->
+    <!-- Umami Analytics -->
+    <script defer src="https://analytics.opspixel.com/script.js" data-website-id="a611a8cf-f837-4db1-9afb-9e745299c785"></script>
 
-    <!-- Consent Mode v2 defaults (uncomment with GA4/AdSense) -->
-    <!-- <script is:inline>
+    <!-- Consent Mode v2 defaults (MUST be before gtag/adsense) -->
+    <script is:inline>
       window.dataLayer = window.dataLayer || [];
       function gtag(){dataLayer.push(arguments)}
       gtag('consent', 'default', {
@@ -112,20 +113,22 @@ const breadcrumbSchema = (() => {
         'analytics_storage': 'granted',
         'region': ['US']
       });
-    </script> -->
+    </script>
 
-    <!-- GA4 (uncomment when configured) -->
-    <!-- <script async src="https://www.googletagmanager.com/gtag/js?id=YOUR_GA4_MEASUREMENT_ID"></script> -->
-    <!-- <script is:inline>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','YOUR_GA4_MEASUREMENT_ID');</script> -->
+    <!-- GA4 -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-FZPRWG52V3"></script>
+    <script is:inline>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-FZPRWG52V3');</script>
 
-    <!-- AdSense (uncomment when configured) -->
-    <!-- <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7887321168925353" crossorigin="anonymous"></script> -->
+    <!-- AdSense -->
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7887321168925353" crossorigin="anonymous"></script>
   </head>
   <body class="min-h-screen flex flex-col">
     <Header />
+    <AdSlot position="top" />
     <main class="flex-1">
       <slot />
     </main>
+    <AdSlot position="bottom" />
     <Footer />
   </body>
 </html>
