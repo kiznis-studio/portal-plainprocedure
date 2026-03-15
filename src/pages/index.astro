@@ -48,7 +48,7 @@ const siteName = "PlainProcedure";
 const siteDescription = "Healthcare procedure costs in plain English. Compare Medicare payments, billed charges, and price variation across 9,297 procedures and 56 states.";
 ---
 
-<Base title={siteName} description={siteDescription}>
+<Base title={`${siteName} — Compare Medicare Costs for 9,297 Medical Procedures`} description={siteDescription}>
   <!-- Hero Section -->
   <section class="py-12 md:py-20 bg-gradient-to-b from-sky-50 to-white dark:from-sky-950/20 dark:to-[var(--color-background)]">
     <div class="container">
@@ -258,5 +258,12 @@ const siteDescription = "Healthcare procedure costs in plain English. Compare Me
       { "@type": "Question", "name": "What is the difference between Medicare payment and billed charge?", "acceptedAnswer": { "@type": "Answer", "text": "The Medicare payment is what the government actually pays. The billed charge is what the provider bills. The markup shows how much above the Medicare rate a provider charges." } },
       { "@type": "Question", "name": "Is this free to use?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. All data and tools are completely free to use. CMS data is public domain." } }
     ]
+  })} />
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    "name": "PlainProcedure",
+    "url": "https://plainprocedure.com",
+    "description": "Healthcare procedure cost transparency. Compare Medicare payments vs. billed charges for 9,297 medical procedures across 56 states and territories."
   })} />
 </Base>
