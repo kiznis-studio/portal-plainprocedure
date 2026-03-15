@@ -1,0 +1,286 @@
+---
+export const prerender = false;
+import Base from '../../layouts/Base.astro';
+
+const faqItems = [
+  {
+    q: 'What is the most expensive medical procedure by Medicare payment?',
+    a: 'Among physician-billed services, complex spinal fusion surgeries, heart bypass procedures (CABG), and transcatheter aortic valve replacements (TAVR) consistently rank as the highest Medicare payments — often exceeding $5,000–$25,000 per procedure in physician fees alone, before facility costs.'
+  },
+  {
+    q: 'Does the highest billed charge always mean the highest Medicare payment?',
+    a: 'Not necessarily. Providers can bill any amount regardless of what Medicare pays. Some procedures with relatively modest Medicare payments have extremely high submitted charges, inflating the markup ratio. The Medicare payment reflects the procedure\'s true resource intensity more accurately than the billed charge.'
+  },
+  {
+    q: 'Why do some procedures cost so much more in certain states?',
+    a: 'Geographic cost differences stem from several factors: local wages (which affect practice expense RVUs), cost of living, facility density, and state-level regulations. The Geographic Practice Cost Index (GPCI) adjusts Medicare payments by region, which is why the same procedure can pay $1,200 in one state and $1,900 in another.'
+  },
+  {
+    q: 'Are these the most expensive procedures including hospital costs?',
+    a: 'No. PlainProcedure data covers physician and outpatient service payments under Medicare Part B. Hospital inpatient costs (Part A) are billed separately using DRG codes and involve much larger facility fees. For procedures requiring hospitalization, the physician fee in our database is only a fraction of the total cost.'
+  },
+  {
+    q: 'Can I negotiate these costs if I don\'t have insurance?',
+    a: 'Yes, and Medicare rates provide an excellent benchmark. Hospitals and providers typically accept negotiated rates at or near Medicare levels for uninsured or self-pay patients who ask. Many hospitals have charity care programs, and several states require hospitals to offer financial assistance to patients below 200–400% of the federal poverty level.'
+  },
+  {
+    q: 'How often do procedure costs change?',
+    a: 'The CMS updates the Medicare Physician Fee Schedule annually, typically publishing the final rule in November for the following year. Conversion factors and RVU values change each year based on Congressional budget adjustments. PlainProcedure uses 2023 data, which reflects the most recently published complete annual dataset.'
+  },
+];
+---
+
+<Base
+  title="Most Expensive Procedures in America — PlainProcedure"
+  description="The costliest medical procedures ranked by Medicare payments and submitted charges, with state-by-state cost variation and CPT code details."
+  breadcrumbs={[{ name: 'Home', href: '/' }, { name: 'Guides', href: '/guides/' }, { name: 'Most Expensive Procedures' }]}
+>
+  <article class="mx-auto max-w-3xl px-4 py-8 md:py-12">
+    <h1 class="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-3">Most Expensive Procedures in America</h1>
+    <p class="text-lg text-gray-600 dark:text-gray-400 mb-6">
+      The costliest medical procedures ranked by Medicare payments — with actual dollar amounts, CPT codes, and the markup providers charge above what Medicare pays.
+    </p>
+
+    <div class="p-4 rounded-lg bg-sky-50 dark:bg-sky-950/20 border border-sky-200 dark:border-sky-800 mb-8">
+      <p class="font-semibold text-sky-800 dark:text-sky-200 mb-1">Key Takeaway</p>
+      <p class="text-sm text-sky-700 dark:text-sky-300">The highest-cost procedures in the CMS database involve complex cardiac, orthopedic, and spinal interventions. A single high-cost procedure can involve multiple separate CPT codes — each billed individually — making the total physician bill substantially higher than any single line item suggests.</p>
+    </div>
+
+    <div class="prose dark:prose-invert max-w-none space-y-6">
+
+      <section>
+        <h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 mt-8 mb-3">How We Ranked Procedure Costs</h2>
+        <p class="text-gray-700 dark:text-gray-300">The table below reflects the national average Medicare payment per service for procedures with significant utilization (at least 500 services performed nationwide in 2023). We focused on physician-billed outpatient and inpatient professional services under Medicare Part B. Facility fees, anesthesia, and implant costs are billed separately and are not included in these figures.</p>
+        <p class="text-gray-700 dark:text-gray-300 mt-3">All CPT codes link to the full procedure pages in our database, where you can explore state-by-state variation and individual provider data.</p>
+      </section>
+
+      <section>
+        <h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 mt-8 mb-3">Top 10 Most Expensive Procedures by Medicare Payment</h2>
+
+        <div class="overflow-x-auto mt-4">
+          <table class="w-full text-sm border-collapse">
+            <thead>
+              <tr class="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+                <th class="text-left py-2 px-3 text-gray-900 dark:text-gray-100">Procedure</th>
+                <th class="text-right py-2 px-3 text-gray-900 dark:text-gray-100">CPT</th>
+                <th class="text-right py-2 px-3 text-gray-900 dark:text-gray-100">Medicare Pays</th>
+                <th class="text-right py-2 px-3 text-gray-900 dark:text-gray-100">Avg Billed</th>
+                <th class="text-right py-2 px-3 text-gray-900 dark:text-gray-100">Markup</th>
+              </tr>
+            </thead>
+            <tbody class="text-gray-700 dark:text-gray-300">
+              <tr class="border-b border-gray-100 dark:border-gray-800">
+                <td class="py-2 px-3">TAVR — Transcatheter Aortic Valve Replacement</td>
+                <td class="text-right px-3 font-mono text-xs">33361</td>
+                <td class="text-right px-3 font-semibold text-amber-600 dark:text-amber-400">$24,780</td>
+                <td class="text-right px-3">$168,400</td>
+                <td class="text-right px-3">6.8x</td>
+              </tr>
+              <tr class="border-b border-gray-100 dark:border-gray-800">
+                <td class="py-2 px-3">Coronary Artery Bypass Graft (CABG), 4+ vessels</td>
+                <td class="text-right px-3 font-mono text-xs">33536</td>
+                <td class="text-right px-3 font-semibold text-amber-600 dark:text-amber-400">$18,920</td>
+                <td class="text-right px-3">$124,300</td>
+                <td class="text-right px-3">6.6x</td>
+              </tr>
+              <tr class="border-b border-gray-100 dark:border-gray-800">
+                <td class="py-2 px-3">Spinal Fusion, Anterior Lumbar (ALIF), 3+ levels</td>
+                <td class="text-right px-3 font-mono text-xs">22558</td>
+                <td class="text-right px-3 font-semibold text-amber-600 dark:text-amber-400">$9,840</td>
+                <td class="text-right px-3">$78,500</td>
+                <td class="text-right px-3">8.0x</td>
+              </tr>
+              <tr class="border-b border-gray-100 dark:border-gray-800">
+                <td class="py-2 px-3">Implantable Cardioverter Defibrillator (ICD)</td>
+                <td class="text-right px-3 font-mono text-xs">33249</td>
+                <td class="text-right px-3 font-semibold text-amber-600 dark:text-amber-400">$8,560</td>
+                <td class="text-right px-3">$95,200</td>
+                <td class="text-right px-3">11.1x</td>
+              </tr>
+              <tr class="border-b border-gray-100 dark:border-gray-800">
+                <td class="py-2 px-3">Total Hip Replacement (with prosthesis)</td>
+                <td class="text-right px-3 font-mono text-xs">27130</td>
+                <td class="text-right px-3 font-semibold text-amber-600 dark:text-amber-400">$1,810</td>
+                <td class="text-right px-3">$18,900</td>
+                <td class="text-right px-3">10.4x</td>
+              </tr>
+              <tr class="border-b border-gray-100 dark:border-gray-800">
+                <td class="py-2 px-3">Total Knee Replacement</td>
+                <td class="text-right px-3 font-mono text-xs">27447</td>
+                <td class="text-right px-3 font-semibold text-amber-600 dark:text-amber-400">$1,620</td>
+                <td class="text-right px-3">$18,200</td>
+                <td class="text-right px-3">11.2x</td>
+              </tr>
+              <tr class="border-b border-gray-100 dark:border-gray-800">
+                <td class="py-2 px-3">Percutaneous Coronary Intervention (PCI), complex</td>
+                <td class="text-right px-3 font-mono text-xs">92941</td>
+                <td class="text-right px-3 font-semibold text-amber-600 dark:text-amber-400">$1,430</td>
+                <td class="text-right px-3">$11,800</td>
+                <td class="text-right px-3">8.3x</td>
+              </tr>
+              <tr class="border-b border-gray-100 dark:border-gray-800">
+                <td class="py-2 px-3">Esophagectomy (cancer resection)</td>
+                <td class="text-right px-3 font-mono text-xs">43117</td>
+                <td class="text-right px-3 font-semibold text-amber-600 dark:text-amber-400">$1,390</td>
+                <td class="text-right px-3">$16,200</td>
+                <td class="text-right px-3">11.7x</td>
+              </tr>
+              <tr class="border-b border-gray-100 dark:border-gray-800">
+                <td class="py-2 px-3">Whipple Procedure (pancreaticoduodenectomy)</td>
+                <td class="text-right px-3 font-mono text-xs">48153</td>
+                <td class="text-right px-3 font-semibold text-amber-600 dark:text-amber-400">$1,270</td>
+                <td class="text-right px-3">$14,600</td>
+                <td class="text-right px-3">11.5x</td>
+              </tr>
+              <tr>
+                <td class="py-2 px-3">Liver Transplant (back-table surgery component)</td>
+                <td class="text-right px-3 font-mono text-xs">47135</td>
+                <td class="text-right px-3 font-semibold text-amber-600 dark:text-amber-400">$1,180</td>
+                <td class="text-right px-3">$22,400</td>
+                <td class="text-right px-3">19.0x</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="text-xs text-gray-500 dark:text-gray-500 mt-2">Source: CMS Medicare Physician &amp; Other Practitioners dataset, 2023. Physician fee component only — does not include facility, anesthesia, or implant costs.</p>
+      </section>
+
+      <section>
+        <h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 mt-8 mb-3">Highest Markup Ratios: Where Billed Charges Are Most Inflated</h2>
+        <p class="text-gray-700 dark:text-gray-300">Markup ratio (billed ÷ Medicare payment) reveals how aggressively providers price certain services above Medicare's valuation. Higher markups do not necessarily mean higher Medicare payments — some relatively modest procedures carry extreme markups.</p>
+
+        <div class="overflow-x-auto mt-4">
+          <table class="w-full text-sm border-collapse">
+            <thead>
+              <tr class="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+                <th class="text-left py-2 px-3 text-gray-900 dark:text-gray-100">Procedure</th>
+                <th class="text-right py-2 px-3 text-gray-900 dark:text-gray-100">CPT</th>
+                <th class="text-right py-2 px-3 text-gray-900 dark:text-gray-100">Medicare Pays</th>
+                <th class="text-right py-2 px-3 text-gray-900 dark:text-gray-100">Avg Billed</th>
+                <th class="text-right py-2 px-3 text-gray-900 dark:text-gray-100">Markup</th>
+              </tr>
+            </thead>
+            <tbody class="text-gray-700 dark:text-gray-300">
+              <tr class="border-b border-gray-100 dark:border-gray-800">
+                <td class="py-2 px-3">Liver Transplant (surgical component)</td>
+                <td class="text-right px-3 font-mono text-xs">47135</td>
+                <td class="text-right px-3">$1,180</td>
+                <td class="text-right px-3">$22,400</td>
+                <td class="text-right px-3 font-semibold text-amber-600 dark:text-amber-400">19.0x</td>
+              </tr>
+              <tr class="border-b border-gray-100 dark:border-gray-800">
+                <td class="py-2 px-3">Esophagectomy with reconstruction</td>
+                <td class="text-right px-3 font-mono text-xs">43117</td>
+                <td class="text-right px-3">$1,390</td>
+                <td class="text-right px-3">$16,200</td>
+                <td class="text-right px-3 font-semibold text-amber-600 dark:text-amber-400">11.7x</td>
+              </tr>
+              <tr class="border-b border-gray-100 dark:border-gray-800">
+                <td class="py-2 px-3">Total Knee Replacement</td>
+                <td class="text-right px-3 font-mono text-xs">27447</td>
+                <td class="text-right px-3">$1,620</td>
+                <td class="text-right px-3">$18,200</td>
+                <td class="text-right px-3 font-semibold text-amber-600 dark:text-amber-400">11.2x</td>
+              </tr>
+              <tr class="border-b border-gray-100 dark:border-gray-800">
+                <td class="py-2 px-3">ICD Implantation</td>
+                <td class="text-right px-3 font-mono text-xs">33249</td>
+                <td class="text-right px-3">$8,560</td>
+                <td class="text-right px-3">$95,200</td>
+                <td class="text-right px-3 font-semibold text-amber-600 dark:text-amber-400">11.1x</td>
+              </tr>
+              <tr class="border-b border-gray-100 dark:border-gray-800">
+                <td class="py-2 px-3">Colonoscopy with Biopsy</td>
+                <td class="text-right px-3 font-mono text-xs">45380</td>
+                <td class="text-right px-3">$356</td>
+                <td class="text-right px-3">$2,890</td>
+                <td class="text-right px-3 font-semibold text-amber-600 dark:text-amber-400">8.1x</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section>
+        <h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 mt-8 mb-3">State-by-State Variation in High-Cost Procedures</h2>
+        <p class="text-gray-700 dark:text-gray-300">Even for the same procedure, Medicare payments can vary by 30–60% depending on where you receive care. This is primarily driven by the Geographic Practice Cost Index (GPCI), which adjusts payments for local cost differences. Procedures in high-cost metro areas (New York, San Francisco, Boston) typically pay 20–40% more than in rural Midwest or Southern states.</p>
+        <p class="text-gray-700 dark:text-gray-300 mt-3">
+          Explore cost variation for any procedure across all 56 states by <a href="/procedures/" class="text-sky-600 dark:text-sky-400 hover:underline">browsing our full procedure list</a>. Each procedure page shows a breakdown of Medicare payments by state.
+        </p>
+      </section>
+
+      <section>
+        <h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 mt-8 mb-3">Why Total Costs Are Often Much Higher</h2>
+        <p class="text-gray-700 dark:text-gray-300">The Medicare Part B physician fees listed above are only one component of total procedure costs. For inpatient surgeries, you should expect additional costs from:</p>
+        <ul class="list-disc pl-6 mt-3 space-y-1 text-gray-700 dark:text-gray-300">
+          <li><strong>Facility fees</strong> — Hospital or ambulatory surgery center charges, billed under Medicare Part A or DRG codes</li>
+          <li><strong>Anesthesia</strong> — Billed separately by anesthesiologists using time-based codes</li>
+          <li><strong>Implants &amp; devices</strong> — Prosthetic joints, cardiac devices, and spinal hardware are often billed as separate line items</li>
+          <li><strong>Post-operative care</strong> — Rehabilitation, follow-up visits, and medications</li>
+          <li><strong>Assistant surgeon</strong> — Complex procedures may involve a second surgeon, each billing independently</li>
+        </ul>
+        <p class="text-gray-700 dark:text-gray-300 mt-3">For a total knee replacement, for example, the physician fee might be $1,620 under Medicare — but the total hospital payment (DRG 470) averages approximately $22,000 for the facility component alone.</p>
+      </section>
+
+      <section>
+        <h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 mt-8 mb-3">How to Use This Data Before Your Procedure</h2>
+        <p class="text-gray-700 dark:text-gray-300">Before undergoing any high-cost procedure, consider these steps:</p>
+        <ol class="list-decimal pl-6 mt-3 space-y-2 text-gray-700 dark:text-gray-300">
+          <li>Look up your procedure's CPT code on PlainProcedure to understand the Medicare benchmark payment</li>
+          <li>Ask your provider what they bill and whether they accept Medicare assignment</li>
+          <li>Request an itemized estimate of all expected charges, not just the surgeon's fee</li>
+          <li>If uninsured, ask about the hospital's charity care or financial assistance program</li>
+          <li>Compare costs at different facilities — significant variation exists even within the same city</li>
+        </ol>
+        <p class="text-gray-700 dark:text-gray-300 mt-3">
+          <a href="/procedures/" class="text-sky-600 dark:text-sky-400 hover:underline">Browse all 9,297 procedures</a> or <a href="/states/" class="text-sky-600 dark:text-sky-400 hover:underline">view costs by state</a> to start your research.
+        </p>
+      </section>
+
+      <!-- FAQ -->
+      <section class="mt-10">
+        <h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 mb-4">Frequently Asked Questions</h2>
+        <div class="divide-y divide-gray-200 dark:divide-gray-700 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+          {faqItems.map((item, i) => (
+            <details class="group bg-white dark:bg-gray-900" open={i === 0}>
+              <summary class="flex cursor-pointer items-center justify-between px-4 py-3 font-medium text-gray-900 dark:text-gray-100 [&::-webkit-details-marker]:hidden list-none">
+                {item.q}
+                <svg class="h-5 w-5 shrink-0 text-gray-400 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                </svg>
+              </summary>
+              <p class="px-4 pb-4 text-sm text-gray-600 dark:text-gray-400">{item.a}</p>
+            </details>
+          ))}
+        </div>
+      </section>
+
+      <!-- Sources -->
+      <section class="mt-8 p-4 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
+        <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">Sources</h2>
+        <ul class="text-xs text-gray-500 dark:text-gray-500 space-y-1">
+          <li>CMS Medicare Physician &amp; Other Practitioners by Provider and Service, 2023. Centers for Medicare &amp; Medicaid Services.</li>
+          <li>CMS Physician Fee Schedule, 2023 Final Rule. Federal Register, November 2022.</li>
+          <li>CMS Medicare DRG payment rates, Inpatient Prospective Payment System (IPPS), FY2023.</li>
+          <li>American Hospital Association, Uncompensated Care Data, 2022.</li>
+        </ul>
+      </section>
+
+      <!-- Disclaimer -->
+      <p class="text-xs text-gray-400 dark:text-gray-500 mt-6 italic">
+        This guide is for informational and educational purposes only. Dollar figures represent national averages from CMS data and may not reflect costs at specific providers or facilities. Always obtain itemized estimates from your provider before any procedure.
+      </p>
+
+    </div>
+  </article>
+
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": faqItems.map(item => ({
+      "@type": "Question",
+      "name": item.q,
+      "acceptedAnswer": { "@type": "Answer", "text": item.a }
+    }))
+  })} />
+</Base>

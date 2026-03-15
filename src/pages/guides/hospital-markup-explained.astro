@@ -1,0 +1,222 @@
+---
+export const prerender = false;
+import Base from '../../layouts/Base.astro';
+
+const faqItems = [
+  {
+    q: 'What is a hospital chargemaster?',
+    a: 'A chargemaster (or charge description master / CDM) is a hospital\'s internal price list for every billable item and service it provides — from aspirin to open heart surgery. Chargemaster prices are set by the hospital with no regulatory oversight and often bear no relationship to what anyone actually pays. They serve primarily as a starting point for negotiation with insurers and as a billing anchor for uninsured patients.'
+  },
+  {
+    q: 'Why do hospitals charge 10x what Medicare pays?',
+    a: 'Chargemaster rates are intentionally high for several strategic reasons: they provide maximum headroom for insurance negotiations (hospitals settle for less); they allow hospitals to claim larger "charity care" discounts (the written-off difference between chargemaster and actual payment); and they maximize recovery from patients without insurance who can\'t negotiate. The system has evolved over decades without competitive pressure to rationalize prices.'
+  },
+  {
+    q: 'Do I ever have to pay chargemaster rates?',
+    a: 'Uninsured patients and out-of-network patients with certain coverage types are most at risk of chargemaster billing. However, you almost always have the right to negotiate. Most nonprofit hospitals (which receive tax exemptions) are legally required to offer financial assistance to patients below certain income thresholds. For-profit hospitals frequently negotiate as well. Never pay a chargemaster bill without asking for a reduction.'
+  },
+  {
+    q: 'Are hospitals required to publish their prices?',
+    a: 'Yes. The Hospital Price Transparency Rule (effective January 1, 2021) requires hospitals to publish machine-readable files with their standard charges for all items and services, including payer-specific negotiated rates. They must also publish a consumer-friendly list of 300 "shoppable" services. Compliance has been inconsistent, with CMS issuing penalties to non-compliant hospitals.'
+  },
+  {
+    q: 'What is the difference between nonprofit and for-profit hospital markups?',
+    a: 'Studies show both nonprofit and for-profit hospitals maintain high chargemaster markups, though the patterns differ. Nonprofit hospitals often have higher markups but also provide more charity care (required for their tax-exempt status). For-profit hospital systems in markets with limited competition have been found to have some of the highest markups nationally. Market concentration — not profit status — is a stronger predictor of markup levels.'
+  },
+  {
+    q: 'How does hospital consolidation affect markups?',
+    a: 'Research consistently shows that hospital mergers and acquisitions lead to higher prices. When a health system acquires the only competing hospital in a market, it gains pricing power over insurers who cannot exclude it from their network. A 2018 Health Affairs study found that hospital prices in highly concentrated markets were 12% higher than in competitive markets, and the premium grows over time after mergers.'
+  },
+];
+---
+
+<Base
+  title="Hospital Markup Explained — PlainProcedure"
+  description="Why hospitals charge 3-10x what Medicare pays, how chargemasters work, what it means for uninsured patients, and how to protect yourself from inflated bills."
+  breadcrumbs={[{ name: 'Home', href: '/' }, { name: 'Guides', href: '/guides/' }, { name: 'Hospital Markup Explained' }]}
+>
+  <article class="mx-auto max-w-3xl px-4 py-8 md:py-12">
+    <h1 class="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-3">Hospital Markup Explained</h1>
+    <p class="text-lg text-gray-600 dark:text-gray-400 mb-6">
+      Why hospitals charge 3 to 20 times what Medicare pays — and what you can do about it.
+    </p>
+
+    <div class="p-4 rounded-lg bg-sky-50 dark:bg-sky-950/20 border border-sky-200 dark:border-sky-800 mb-8">
+      <p class="font-semibold text-sky-800 dark:text-sky-200 mb-1">Key Takeaway</p>
+      <p class="text-sm text-sky-700 dark:text-sky-300">Hospital markups — the ratio of billed charges to Medicare payments — average 4-6x nationally but can exceed 20x for certain procedures. The chargemaster system exists primarily as a negotiating tool with insurers, but uninsured patients can be exposed to these inflated prices. Understanding how markups work is the first step to protecting yourself from their worst effects.</p>
+    </div>
+
+    <div class="prose dark:prose-invert max-w-none space-y-6">
+
+      <section>
+        <h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 mt-8 mb-3">What Is the Chargemaster?</h2>
+        <p class="text-gray-700 dark:text-gray-300">Every hospital maintains a Charge Description Master (CDM) — commonly called a chargemaster — which is its internal price list for every billable item and service. The chargemaster might contain 30,000 to 100,000 line items, including room charges, individual medications, surgical supplies, laboratory tests, procedures, and physician services.</p>
+        <p class="text-gray-700 dark:text-gray-300 mt-3">These prices are set by each hospital's finance department with no external regulation, competitive bidding, or cost-based methodology. The same IV bag of saline that costs $1 to produce might appear on a chargemaster as $30-$100. A single Tylenol tablet might be listed at $15-$30.</p>
+        <p class="text-gray-700 dark:text-gray-300 mt-3">Chargemaster prices were not designed to be what patients pay — they were designed as a starting ceiling for negotiations with private insurers, each of which negotiates discounts of 30-70% off chargemaster rates.</p>
+      </section>
+
+      <section>
+        <h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 mt-8 mb-3">Markup Ratios Across Procedure Categories</h2>
+        <p class="text-gray-700 dark:text-gray-300">The markup ratio (billed charge ÷ Medicare payment) varies significantly across procedure types. Procedures with more specialist involvement, advanced technology, or limited competition tend to have higher markups.</p>
+
+        <div class="overflow-x-auto mt-4">
+          <table class="w-full text-sm border-collapse">
+            <thead>
+              <tr class="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+                <th class="text-left py-2 px-3 text-gray-900 dark:text-gray-100">Procedure Category</th>
+                <th class="text-right py-2 px-3 text-gray-900 dark:text-gray-100">Avg Medicare Pays</th>
+                <th class="text-right py-2 px-3 text-gray-900 dark:text-gray-100">Avg Billed</th>
+                <th class="text-right py-2 px-3 text-gray-900 dark:text-gray-100">Markup</th>
+              </tr>
+            </thead>
+            <tbody class="text-gray-700 dark:text-gray-300">
+              <tr class="border-b border-gray-100 dark:border-gray-800">
+                <td class="py-2 px-3">Office &amp; Evaluation Visits</td>
+                <td class="text-right px-3">$77</td>
+                <td class="text-right px-3">$215</td>
+                <td class="text-right px-3 font-semibold">2.8x</td>
+              </tr>
+              <tr class="border-b border-gray-100 dark:border-gray-800">
+                <td class="py-2 px-3">Diagnostic Imaging (X-ray, Ultrasound)</td>
+                <td class="text-right px-3">$52</td>
+                <td class="text-right px-3">$310</td>
+                <td class="text-right px-3 font-semibold">6.0x</td>
+              </tr>
+              <tr class="border-b border-gray-100 dark:border-gray-800">
+                <td class="py-2 px-3">Laboratory Tests</td>
+                <td class="text-right px-3">$18</td>
+                <td class="text-right px-3">$112</td>
+                <td class="text-right px-3 font-semibold">6.2x</td>
+              </tr>
+              <tr class="border-b border-gray-100 dark:border-gray-800">
+                <td class="py-2 px-3">Advanced Imaging (MRI, CT Scan)</td>
+                <td class="text-right px-3">$220</td>
+                <td class="text-right px-3">$1,890</td>
+                <td class="text-right px-3 font-semibold">8.6x</td>
+              </tr>
+              <tr class="border-b border-gray-100 dark:border-gray-800">
+                <td class="py-2 px-3">Cardiac Procedures</td>
+                <td class="text-right px-3">$480</td>
+                <td class="text-right px-3">$4,700</td>
+                <td class="text-right px-3 font-semibold">9.8x</td>
+              </tr>
+              <tr class="border-b border-gray-100 dark:border-gray-800">
+                <td class="py-2 px-3">Orthopedic Surgery</td>
+                <td class="text-right px-3">$1,200</td>
+                <td class="text-right px-3">$13,400</td>
+                <td class="text-right px-3 font-semibold">11.2x</td>
+              </tr>
+              <tr class="border-b border-gray-100 dark:border-gray-800">
+                <td class="py-2 px-3">Major Cardiac Surgery (CABG, TAVR)</td>
+                <td class="text-right px-3">$18,000</td>
+                <td class="text-right px-3">$128,000</td>
+                <td class="text-right px-3 font-semibold">7.1x</td>
+              </tr>
+              <tr>
+                <td class="py-2 px-3">Transplant Surgery</td>
+                <td class="text-right px-3">$1,100</td>
+                <td class="text-right px-3">$21,000</td>
+                <td class="text-right px-3 font-semibold">19.1x</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="text-xs text-gray-500 dark:text-gray-500 mt-2">Source: Derived from CMS Medicare Physician &amp; Other Practitioners dataset, 2023. National averages by category. Physician fee component only.</p>
+      </section>
+
+      <section>
+        <h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 mt-8 mb-3">Why High Markups Developed</h2>
+        <p class="text-gray-700 dark:text-gray-300">The chargemaster system and its extreme markups did not develop overnight. Several historical and structural factors created today's pricing environment:</p>
+        <ol class="list-decimal pl-6 mt-3 space-y-2 text-gray-700 dark:text-gray-300">
+          <li><strong>Cost-plus origins (1930s-1960s)</strong> — Early hospital billing was cost-based, with insurers paying actual costs plus a margin. When payers shifted to fee schedules, hospitals had no incentive to lower list prices — only to negotiate discounts from them.</li>
+          <li><strong>Medicare's 1983 DRG shift</strong> — When Medicare moved to fixed Diagnosis-Related Group payments for inpatient care, hospitals that couldn't recover costs from Medicare shifted pricing pressure to private insurers, setting higher list prices to preserve negotiating headroom.</li>
+          <li><strong>Insurance proliferation</strong> — As private insurers multiplied with different contract terms, chargemaster rates became a universal billing starting point that could be discounted differently for each payer.</li>
+          <li><strong>Consolidation and market power</strong> — As hospital systems acquired competitors through the 1990s and 2000s, they gained pricing power over insurers, reducing the competitive pressure to rationalize list prices.</li>
+          <li><strong>Opacity and lack of comparison shopping</strong> — Unlike most markets, patients historically had no way to compare prices before receiving care. This eliminated the competitive pressure that would normally force prices toward costs.</li>
+        </ol>
+      </section>
+
+      <section>
+        <h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 mt-8 mb-3">Who Bears the Burden of High Markups?</h2>
+        <p class="text-gray-700 dark:text-gray-300">High markups disproportionately affect three groups:</p>
+        <ul class="list-disc pl-6 mt-3 space-y-2 text-gray-700 dark:text-gray-300">
+          <li><strong>Uninsured patients</strong> — Without a negotiated rate, uninsured patients are often billed full chargemaster prices. An uninsured patient requiring an emergency appendectomy might receive a bill of $40,000-$80,000 when the actual Medicare cost would be under $5,000. The No Surprises Act does not protect uninsured patients.</li>
+          <li><strong>Out-of-network patients</strong> — Patients who receive care from out-of-network providers (often unknowingly in emergencies) can face inflated bills. The No Surprises Act now limits some of these situations.</li>
+          <li><strong>Self-pay medical tourists</strong> — International or domestic patients seeking care outside their insurance network face similar exposure.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 mt-8 mb-3">Hospital Charity Care: Required Protection for Low-Income Patients</h2>
+        <p class="text-gray-700 dark:text-gray-300">Nonprofit hospitals — which constitute about 58% of all US hospitals — are tax-exempt under Section 501(c)(3) of the Internal Revenue Code in exchange for providing community benefit, including charity care. The ACA strengthened these requirements, mandating that nonprofit hospitals:</p>
+        <ul class="list-disc pl-6 mt-3 space-y-1 text-gray-700 dark:text-gray-300">
+          <li>Have a written financial assistance policy (FAP)</li>
+          <li>Limit charges for eligible patients to amounts "generally billed" (typically Medicare or Medicaid rates)</li>
+          <li>Not engage in extraordinary collection actions without first determining FAP eligibility</li>
+          <li>Publicize their FAP widely, including on billing statements and hospital websites</li>
+        </ul>
+        <p class="text-gray-700 dark:text-gray-300 mt-3">Eligibility thresholds vary by hospital, but most provide full charity care for patients below 200% of the federal poverty level and sliding-scale assistance up to 400% FPL. If you receive a large bill, ask about financial assistance before paying or entering a payment plan.</p>
+      </section>
+
+      <section>
+        <h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 mt-8 mb-3">Navigating Markups at Different Hospitals</h2>
+        <p class="text-gray-700 dark:text-gray-300">Not all hospitals mark up equally. Academic medical centers and large urban hospital systems tend to have higher markups than rural critical access hospitals or outpatient surgery centers. For elective procedures, comparing facilities is worthwhile:</p>
+        <ul class="list-disc pl-6 mt-3 space-y-1 text-gray-700 dark:text-gray-300">
+          <li>Ambulatory surgery centers (ASCs) typically charge 40-65% less than hospital outpatient departments for the same procedures</li>
+          <li>Independent imaging centers charge significantly less than hospital radiology departments</li>
+          <li>Hospital-owned physician groups often have facility fees added to professional fees — independent practices typically do not</li>
+        </ul>
+        <p class="text-gray-700 dark:text-gray-300 mt-3">
+          Compare hospital costs in our <a href="/hospitals/" class="text-sky-600 dark:text-sky-400 hover:underline">hospitals directory</a>, and look up individual procedure benchmarks in our <a href="/procedures/" class="text-sky-600 dark:text-sky-400 hover:underline">procedures database</a>.
+        </p>
+      </section>
+
+      <!-- FAQ -->
+      <section class="mt-10">
+        <h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 mb-4">Frequently Asked Questions</h2>
+        <div class="divide-y divide-gray-200 dark:divide-gray-700 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+          {faqItems.map((item, i) => (
+            <details class="group bg-white dark:bg-gray-900" open={i === 0}>
+              <summary class="flex cursor-pointer items-center justify-between px-4 py-3 font-medium text-gray-900 dark:text-gray-100 [&::-webkit-details-marker]:hidden list-none">
+                {item.q}
+                <svg class="h-5 w-5 shrink-0 text-gray-400 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                </svg>
+              </summary>
+              <p class="px-4 pb-4 text-sm text-gray-600 dark:text-gray-400">{item.a}</p>
+            </details>
+          ))}
+        </div>
+      </section>
+
+      <!-- Sources -->
+      <section class="mt-8 p-4 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
+        <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">Sources</h2>
+        <ul class="text-xs text-gray-500 dark:text-gray-500 space-y-1">
+          <li>CMS Medicare Physician &amp; Other Practitioners by Provider and Service, 2023.</li>
+          <li>Anderson GF et al. "It's The Prices, Stupid: Why the United States Is So Different From Other Countries." Health Affairs, 2003.</li>
+          <li>Bai G, Anderson GF. "Extreme Markup: The Fifty US Hospitals With The Highest Charge-To-Cost Ratios." Health Affairs, 2015.</li>
+          <li>Cooper Z et al. "The Price Ain't Right? Hospital Prices and Health Spending on the Privately Insured." Quarterly Journal of Economics, 2019.</li>
+          <li>IRS. "Requirements for 501(c)(3) Hospitals." Section 501(r), Internal Revenue Code.</li>
+          <li>CMS. Hospital Price Transparency Rule, 2021.</li>
+        </ul>
+      </section>
+
+      <!-- Disclaimer -->
+      <p class="text-xs text-gray-400 dark:text-gray-500 mt-6 italic">
+        This guide is for informational and educational purposes only. Markup ratios and cost figures represent national averages and approximations derived from CMS and published research. Individual hospital markups and charity care policies vary significantly. Always contact the hospital's billing or financial assistance department for your specific situation.
+      </p>
+
+    </div>
+  </article>
+
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": faqItems.map(item => ({
+      "@type": "Question",
+      "name": item.q,
+      "acceptedAnswer": { "@type": "Answer", "text": item.a }
+    }))
+  })} />
+</Base>

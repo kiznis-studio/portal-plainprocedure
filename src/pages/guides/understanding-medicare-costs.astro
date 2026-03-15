@@ -1,0 +1,221 @@
+---
+export const prerender = false;
+import Base from '../../layouts/Base.astro';
+
+const faqItems = [
+  {
+    q: 'What is Medicare and who does it cover?',
+    a: 'Medicare is a federal health insurance program that primarily covers Americans aged 65 and older, as well as younger people with certain disabilities or end-stage renal disease. Over 65 million Americans are enrolled in Medicare, making it one of the largest health insurance programs in the world.'
+  },
+  {
+    q: 'How does Medicare decide what to pay for a procedure?',
+    a: 'Medicare uses the Resource-Based Relative Value Scale (RBRVS) to set payment rates. Each procedure gets a Relative Value Unit (RVU) based on physician work, practice expenses, and malpractice costs. These RVUs are multiplied by a national conversion factor (approximately $33.89 in 2023) and adjusted for geographic location.'
+  },
+  {
+    q: 'What is the difference between Medicare payment and billed charge?',
+    a: 'The billed charge (or submitted charge) is the full price a provider lists for a service — often called the chargemaster rate. Medicare\'s allowed amount is typically 20–50% of the billed charge. Medicare then pays 80% of its allowed amount; the patient is responsible for the remaining 20% (the coinsurance).'
+  },
+  {
+    q: 'Can providers charge me more than the Medicare rate?',
+    a: 'Providers who accept Medicare assignment cannot charge more than Medicare\'s allowed amount. However, providers who do not accept assignment (non-participating providers) can charge up to 15% above the Medicare allowed amount — a practice called balance billing. In most situations, Medicare patients are protected from paying the full billed charge.'
+  },
+  {
+    q: 'Does Medicare cover 100% of procedure costs?',
+    a: 'No. Medicare Part B (which covers outpatient and physician services) typically pays 80% of the Medicare-approved amount after you\'ve met your annual deductible ($226 in 2023). You are responsible for the remaining 20% coinsurance, unless you have supplemental insurance (Medigap) or a Medicare Advantage plan.'
+  },
+  {
+    q: 'Where does PlainProcedure\'s data come from?',
+    a: 'All data comes from the CMS Medicare Physician & Other Practitioners by Provider and Service dataset for 2023, published by the Centers for Medicare & Medicaid Services. This public dataset contains actual payment amounts, submitted charges, and service utilization counts for every procedure billed to Medicare nationwide.'
+  },
+];
+---
+
+<Base
+  title="Understanding Medicare Costs — PlainProcedure"
+  description="How Medicare sets payment rates, what billed charges really mean, and why the gap between Medicare payments and submitted charges matters for patients."
+  breadcrumbs={[{ name: 'Home', href: '/' }, { name: 'Guides', href: '/guides/' }, { name: 'Understanding Medicare Costs' }]}
+>
+  <article class="mx-auto max-w-3xl px-4 py-8 md:py-12">
+    <h1 class="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-3">Understanding Medicare Costs</h1>
+    <p class="text-lg text-gray-600 dark:text-gray-400 mb-6">
+      How Medicare sets payment rates, what billed charges really mean, and why the gap between them can be thousands of dollars.
+    </p>
+
+    <div class="p-4 rounded-lg bg-sky-50 dark:bg-sky-950/20 border border-sky-200 dark:border-sky-800 mb-8">
+      <p class="font-semibold text-sky-800 dark:text-sky-200 mb-1">Key Takeaway</p>
+      <p class="text-sm text-sky-700 dark:text-sky-300">Medicare pays an average of 30–40 cents for every dollar a provider bills. This gap — called the markup — can exceed $10,000 on major procedures. Understanding how Medicare pricing works helps you anticipate your real out-of-pocket costs before a procedure.</p>
+    </div>
+
+    <div class="prose dark:prose-invert max-w-none space-y-6">
+
+      <section>
+        <h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 mt-8 mb-3">What Is the Medicare Fee Schedule?</h2>
+        <p class="text-gray-700 dark:text-gray-300">Medicare does not negotiate prices with individual providers the way private insurers do. Instead, Congress authorizes the Centers for Medicare &amp; Medicaid Services (CMS) to publish a national fee schedule updated each year. This schedule sets a maximum "allowed amount" for every covered procedure identified by a Healthcare Common Procedure Coding System (HCPCS) or Current Procedural Terminology (CPT) code.</p>
+        <p class="text-gray-700 dark:text-gray-300 mt-3">The 2023 fee schedule covers more than 10,000 service codes — from a simple office visit (99213) to complex cardiac surgery. Providers who accept Medicare agree to accept these amounts as payment in full, minus patient cost-sharing.</p>
+      </section>
+
+      <section>
+        <h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 mt-8 mb-3">The RBRVS System: How Rates Are Calculated</h2>
+        <p class="text-gray-700 dark:text-gray-300">Since 1992, Medicare has used the Resource-Based Relative Value Scale (RBRVS) to price physician services. Every procedure receives a number of Relative Value Units (RVUs) across three components:</p>
+        <ul class="list-disc pl-6 mt-3 space-y-1 text-gray-700 dark:text-gray-300">
+          <li><strong>Physician Work RVUs</strong> — time, skill, and intensity of the service (about 50% of total)</li>
+          <li><strong>Practice Expense RVUs</strong> — overhead costs like staff, equipment, and office space (about 44%)</li>
+          <li><strong>Malpractice RVUs</strong> — professional liability insurance costs (about 4%)</li>
+        </ul>
+        <p class="text-gray-700 dark:text-gray-300 mt-3">Total RVUs are multiplied by a national conversion factor — $33.89 in 2023 — and then adjusted by a Geographic Practice Cost Index (GPCI) that accounts for regional cost differences. A procedure valued at 10 RVUs would yield a base payment of approximately $338.90 before geographic adjustment.</p>
+      </section>
+
+      <section>
+        <h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 mt-8 mb-3">Medicare Payment vs. Billed Charge: The Gap</h2>
+        <p class="text-gray-700 dark:text-gray-300">Providers are required to submit a "billed charge" or "submitted charge" when billing Medicare — but this is not what Medicare pays. The billed charge comes from the provider's internal chargemaster, a price list that often bears no relationship to what anyone actually pays. Medicare's allowed amount is typically a fraction of the billed charge.</p>
+
+        <div class="overflow-x-auto mt-4">
+          <table class="w-full text-sm border-collapse">
+            <thead>
+              <tr class="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+                <th class="text-left py-2 px-3 text-gray-900 dark:text-gray-100">Procedure</th>
+                <th class="text-right py-2 px-3 text-gray-900 dark:text-gray-100">CPT Code</th>
+                <th class="text-right py-2 px-3 text-gray-900 dark:text-gray-100">Medicare Pays</th>
+                <th class="text-right py-2 px-3 text-gray-900 dark:text-gray-100">Avg Billed</th>
+                <th class="text-right py-2 px-3 text-gray-900 dark:text-gray-100">Markup</th>
+              </tr>
+            </thead>
+            <tbody class="text-gray-700 dark:text-gray-300">
+              <tr class="border-b border-gray-100 dark:border-gray-800">
+                <td class="py-2 px-3">Office Visit, Established Patient (moderate)</td>
+                <td class="text-right px-3 font-mono text-xs">99213</td>
+                <td class="text-right px-3">$77</td>
+                <td class="text-right px-3">$198</td>
+                <td class="text-right px-3">2.6x</td>
+              </tr>
+              <tr class="border-b border-gray-100 dark:border-gray-800">
+                <td class="py-2 px-3">Echocardiogram with Doppler</td>
+                <td class="text-right px-3 font-mono text-xs">93306</td>
+                <td class="text-right px-3">$209</td>
+                <td class="text-right px-3">$1,140</td>
+                <td class="text-right px-3">5.5x</td>
+              </tr>
+              <tr class="border-b border-gray-100 dark:border-gray-800">
+                <td class="py-2 px-3">Colonoscopy with Biopsy</td>
+                <td class="text-right px-3 font-mono text-xs">45380</td>
+                <td class="text-right px-3">$356</td>
+                <td class="text-right px-3">$2,890</td>
+                <td class="text-right px-3">8.1x</td>
+              </tr>
+              <tr class="border-b border-gray-100 dark:border-gray-800">
+                <td class="py-2 px-3">Total Knee Replacement</td>
+                <td class="text-right px-3 font-mono text-xs">27447</td>
+                <td class="text-right px-3">$1,620</td>
+                <td class="text-right px-3">$18,200</td>
+                <td class="text-right px-3">11.2x</td>
+              </tr>
+              <tr class="border-b border-gray-100 dark:border-gray-800">
+                <td class="py-2 px-3">Cataract Surgery with IOL</td>
+                <td class="text-right px-3 font-mono text-xs">66984</td>
+                <td class="text-right px-3">$622</td>
+                <td class="text-right px-3">$3,740</td>
+                <td class="text-right px-3">6.0x</td>
+              </tr>
+              <tr class="border-b border-gray-100 dark:border-gray-800">
+                <td class="py-2 px-3">MRI Brain without Contrast</td>
+                <td class="text-right px-3 font-mono text-xs">70553</td>
+                <td class="text-right px-3">$232</td>
+                <td class="text-right px-3">$2,100</td>
+                <td class="text-right px-3">9.1x</td>
+              </tr>
+              <tr class="border-b border-gray-100 dark:border-gray-800">
+                <td class="py-2 px-3">Cardiac Catheterization</td>
+                <td class="text-right px-3 font-mono text-xs">93458</td>
+                <td class="text-right px-3">$511</td>
+                <td class="text-right px-3">$5,380</td>
+                <td class="text-right px-3">10.5x</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="text-xs text-gray-500 dark:text-gray-500 mt-2">Source: CMS Medicare Physician &amp; Other Practitioners dataset, 2023. National averages.</p>
+      </section>
+
+      <section>
+        <h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 mt-8 mb-3">What Patients Actually Pay</h2>
+        <p class="text-gray-700 dark:text-gray-300">For most Medicare beneficiaries, out-of-pocket costs are structured as follows under traditional Medicare (Parts A and B):</p>
+        <ul class="list-disc pl-6 mt-3 space-y-1 text-gray-700 dark:text-gray-300">
+          <li><strong>Annual Part B deductible:</strong> $226 (2023) — you pay this first each year</li>
+          <li><strong>Coinsurance:</strong> 20% of the Medicare-approved amount after the deductible</li>
+          <li><strong>Part A inpatient deductible:</strong> $1,600 per benefit period for hospital stays</li>
+          <li><strong>No out-of-pocket maximum</strong> under traditional Medicare (Medigap can cap this)</li>
+        </ul>
+        <p class="text-gray-700 dark:text-gray-300 mt-3">For a $1,620 knee replacement payment, your 20% coinsurance would be approximately $324. However, the hospital may also bill for facility fees, anesthesia, and implant costs separately — each with its own 20% coinsurance.</p>
+      </section>
+
+      <section>
+        <h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 mt-8 mb-3">Medicare Assignment: Participating vs. Non-Participating Providers</h2>
+        <p class="text-gray-700 dark:text-gray-300">Whether your provider "accepts assignment" has significant financial implications:</p>
+        <ul class="list-disc pl-6 mt-3 space-y-2 text-gray-700 dark:text-gray-300">
+          <li><strong>Participating providers</strong> accept Medicare assignment on all claims. They agree to accept Medicare's allowed amount as payment in full and cannot bill you for the difference between the billed charge and the allowed amount.</li>
+          <li><strong>Non-participating providers</strong> may accept assignment on a case-by-case basis. If they don't accept assignment, they can charge up to 115% of the Medicare fee schedule — but Medicare will still only pay 80% of the standard allowed amount, leaving you with a higher balance.</li>
+          <li><strong>Opt-out providers</strong> have entirely opted out of Medicare. They can charge any amount, and Medicare pays nothing. These include some concierge physicians and specialists.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 mt-8 mb-3">Why This Data Matters for Non-Medicare Patients</h2>
+        <p class="text-gray-700 dark:text-gray-300">Medicare payment rates are a useful benchmark even if you're not on Medicare. Private insurers often negotiate rates at a multiple of the Medicare rate (typically 110–250% of Medicare). The billed charge figures in our database reveal the ceiling — what an uninsured or out-of-network patient might be billed before any negotiation.</p>
+        <p class="text-gray-700 dark:text-gray-300 mt-3">If you receive a large bill, the Medicare rate provides a strong negotiating anchor. Many hospitals will settle uninsured bills at or near the Medicare rate if asked, and some states require hospitals to offer charity care or financial assistance for patients below certain income thresholds.</p>
+      </section>
+
+      <section>
+        <h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 mt-8 mb-3">Exploring the Data</h2>
+        <p class="text-gray-700 dark:text-gray-300">PlainProcedure lets you look up any of 9,297 procedures to see the national average Medicare payment, average billed charge, and the markup ratio. You can also compare costs across all 56 states and territories to understand geographic variation.</p>
+        <p class="text-gray-700 dark:text-gray-300 mt-3">
+          Start by <a href="/procedures/" class="text-sky-600 dark:text-sky-400 hover:underline">browsing all procedures</a>, or use the <a href="/search" class="text-sky-600 dark:text-sky-400 hover:underline">search tool</a> to find a specific CPT code or procedure name. Each procedure page shows you the full breakdown of costs across states.
+        </p>
+      </section>
+
+      <!-- FAQ -->
+      <section class="mt-10">
+        <h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 mb-4">Frequently Asked Questions</h2>
+        <div class="divide-y divide-gray-200 dark:divide-gray-700 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+          {faqItems.map((item, i) => (
+            <details class="group bg-white dark:bg-gray-900" open={i === 0}>
+              <summary class="flex cursor-pointer items-center justify-between px-4 py-3 font-medium text-gray-900 dark:text-gray-100 [&::-webkit-details-marker]:hidden list-none">
+                {item.q}
+                <svg class="h-5 w-5 shrink-0 text-gray-400 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                </svg>
+              </summary>
+              <p class="px-4 pb-4 text-sm text-gray-600 dark:text-gray-400">{item.a}</p>
+            </details>
+          ))}
+        </div>
+      </section>
+
+      <!-- Sources -->
+      <section class="mt-8 p-4 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
+        <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">Sources</h2>
+        <ul class="text-xs text-gray-500 dark:text-gray-500 space-y-1">
+          <li>CMS Medicare Physician &amp; Other Practitioners by Provider and Service, 2023. <a href="https://data.cms.gov/provider-summary-by-type-of-service/medicare-physician-other-practitioners/medicare-physician-other-practitioners-by-provider-and-service" class="text-sky-600 dark:text-sky-400 hover:underline" target="_blank" rel="noopener noreferrer">data.cms.gov</a></li>
+          <li>CMS Physician Fee Schedule, 2023. Centers for Medicare &amp; Medicaid Services.</li>
+          <li>CMS RBRVS Overview. Centers for Medicare &amp; Medicaid Services, 2023.</li>
+          <li>Medicare Part B Costs, 2023. Medicare.gov.</li>
+        </ul>
+      </section>
+
+      <!-- Disclaimer -->
+      <p class="text-xs text-gray-400 dark:text-gray-500 mt-6 italic">
+        This guide is for informational and educational purposes only. It does not constitute medical, legal, or financial advice. Medicare rules, payment rates, and coverage change annually. Always verify costs with your provider and insurer before receiving care.
+      </p>
+
+    </div>
+  </article>
+
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": faqItems.map(item => ({
+      "@type": "Question",
+      "name": item.q,
+      "acceptedAnswer": { "@type": "Answer", "text": item.a }
+    }))
+  })} />
+</Base>

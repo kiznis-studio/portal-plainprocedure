@@ -1,0 +1,228 @@
+---
+export const prerender = false;
+import Base from '../../layouts/Base.astro';
+
+const faqItems = [
+  {
+    q: 'Why does Medicare pay different amounts in different states?',
+    a: 'Medicare adjusts payments using the Geographic Practice Cost Index (GPCI), which reflects local differences in wages, office rents, and malpractice insurance costs. Providers in high-cost areas like Manhattan or San Francisco receive significantly higher payments than providers in rural Mississippi or Wyoming, even for identical procedures.'
+  },
+  {
+    q: 'Which states have the highest Medicare procedure costs?',
+    a: 'States with the highest average Medicare payments per procedure include Alaska, California, New York, New Jersey, and Hawaii. These states have high labor costs and high costs of doing business, which push up the practice expense and work components of the GPCI adjustment. Alaska often ranks highest due to extreme geographic isolation.'
+  },
+  {
+    q: 'Which states have the lowest Medicare procedure costs?',
+    a: 'States with the lowest average Medicare payments include Mississippi, Alabama, Arkansas, Montana, and Wyoming. These states have lower labor costs and lower overhead expenses for medical practices, resulting in lower GPCI-adjusted payments across most procedure categories.'
+  },
+  {
+    q: 'Does price variation affect care quality?',
+    a: 'Geographic variation in Medicare payments does not necessarily reflect differences in care quality. Research from Dartmouth Atlas shows that high-spending regions do not consistently produce better health outcomes than low-spending regions. Cost variation is primarily driven by supply-side factors like provider density and local economic conditions, not patient outcomes.'
+  },
+  {
+    q: 'If I live in a low-cost state, can I save money by staying local?',
+    a: 'For elective procedures, receiving care in a lower-cost region can significantly reduce out-of-pocket costs — especially for patients paying the 20% Medicare coinsurance, which scales with the procedure payment. However, travel costs, access to specialists, and continuity of care are important countervailing factors to consider.'
+  },
+  {
+    q: 'How does state regulation affect healthcare costs?',
+    a: 'State regulations affect costs in several ways: certificate-of-need (CON) laws limit hospital expansion (reducing competition), scope-of-practice laws determine which providers can bill independently, and state malpractice tort laws influence liability insurance premiums. All of these flow through to GPCI calculations and overall procedure costs.'
+  },
+];
+---
+
+<Base
+  title="Why Healthcare Costs Vary by State — PlainProcedure"
+  description="Geographic variation in Medicare procedure payments explained — how the GPCI works, which states pay most and least, and what drives healthcare cost differences across America."
+  breadcrumbs={[{ name: 'Home', href: '/' }, { name: 'Guides', href: '/guides/' }, { name: 'Why Healthcare Costs Vary by State' }]}
+>
+  <article class="mx-auto max-w-3xl px-4 py-8 md:py-12">
+    <h1 class="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-3">Why Healthcare Costs Vary by State</h1>
+    <p class="text-lg text-gray-600 dark:text-gray-400 mb-6">
+      The same medical procedure can cost 30–60% more in one state than another. Here is how geographic adjustments work — and what drives the gap.
+    </p>
+
+    <div class="p-4 rounded-lg bg-sky-50 dark:bg-sky-950/20 border border-sky-200 dark:border-sky-800 mb-8">
+      <p class="font-semibold text-sky-800 dark:text-sky-200 mb-1">Key Takeaway</p>
+      <p class="text-sm text-sky-700 dark:text-sky-300">Medicare payments for identical procedures vary by 30–60% between the highest-cost states (Alaska, California, New York) and lowest-cost states (Mississippi, Alabama, Arkansas). The Geographic Practice Cost Index (GPCI) is the primary mechanism — it adjusts base payments for local wages, rents, and malpractice insurance costs. Provider density and market competition also play a major role.</p>
+    </div>
+
+    <div class="prose dark:prose-invert max-w-none space-y-6">
+
+      <section>
+        <h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 mt-8 mb-3">The Geographic Practice Cost Index (GPCI)</h2>
+        <p class="text-gray-700 dark:text-gray-300">When CMS calculates Medicare payments, it doesn't pay the same rate everywhere. It applies a Geographic Practice Cost Index (GPCI) to each of the three components of the Relative Value Unit calculation:</p>
+        <ul class="list-disc pl-6 mt-3 space-y-2 text-gray-700 dark:text-gray-300">
+          <li><strong>Physician Work GPCI</strong> — Adjusts for local physician wages and cost of living. Congress mandates a floor of 1.0 for all rural areas.</li>
+          <li><strong>Practice Expense GPCI</strong> — Adjusts for local office rents, non-physician staff wages, and equipment costs. This component has the widest variation between areas.</li>
+          <li><strong>Malpractice GPCI</strong> — Adjusts for local malpractice insurance premium differences, which vary enormously by state and specialty.</li>
+        </ul>
+        <p class="text-gray-700 dark:text-gray-300 mt-3">CMS updates GPCI values every 3–5 years based on Bureau of Labor Statistics wage data, rental surveys, and medical malpractice insurance databases. A GPCI of 1.0 represents the national average — values above 1.0 increase payments and values below 1.0 decrease them.</p>
+      </section>
+
+      <section>
+        <h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 mt-8 mb-3">States with the Highest and Lowest Medicare Payments</h2>
+        <p class="text-gray-700 dark:text-gray-300">The table below shows average Medicare payment levels indexed relative to the national average (100 = national average). States above 100 pay more than average; states below 100 pay less.</p>
+
+        <div class="overflow-x-auto mt-4">
+          <table class="w-full text-sm border-collapse">
+            <thead>
+              <tr class="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+                <th class="text-left py-2 px-3 text-gray-900 dark:text-gray-100">State</th>
+                <th class="text-right py-2 px-3 text-gray-900 dark:text-gray-100">Cost Index</th>
+                <th class="text-right py-2 px-3 text-gray-900 dark:text-gray-100">vs. National Avg</th>
+                <th class="text-left py-2 px-3 text-gray-900 dark:text-gray-100">Primary Driver</th>
+              </tr>
+            </thead>
+            <tbody class="text-gray-700 dark:text-gray-300">
+              <tr class="border-b border-gray-100 dark:border-gray-800">
+                <td class="py-2 px-3 font-medium">Alaska</td>
+                <td class="text-right px-3">148</td>
+                <td class="text-right px-3 text-amber-600 dark:text-amber-400">+48%</td>
+                <td class="px-3 text-xs">Geographic isolation, extreme labor costs</td>
+              </tr>
+              <tr class="border-b border-gray-100 dark:border-gray-800">
+                <td class="py-2 px-3 font-medium">California</td>
+                <td class="text-right px-3">131</td>
+                <td class="text-right px-3 text-amber-600 dark:text-amber-400">+31%</td>
+                <td class="px-3 text-xs">High wages, high rents, malpractice</td>
+              </tr>
+              <tr class="border-b border-gray-100 dark:border-gray-800">
+                <td class="py-2 px-3 font-medium">New York</td>
+                <td class="text-right px-3">129</td>
+                <td class="text-right px-3 text-amber-600 dark:text-amber-400">+29%</td>
+                <td class="px-3 text-xs">NYC metro wage premium, high malpractice</td>
+              </tr>
+              <tr class="border-b border-gray-100 dark:border-gray-800">
+                <td class="py-2 px-3 font-medium">Hawaii</td>
+                <td class="text-right px-3">124</td>
+                <td class="text-right px-3 text-amber-600 dark:text-amber-400">+24%</td>
+                <td class="px-3 text-xs">Island isolation, high cost of living</td>
+              </tr>
+              <tr class="border-b border-gray-100 dark:border-gray-800">
+                <td class="py-2 px-3 font-medium">New Jersey</td>
+                <td class="text-right px-3">119</td>
+                <td class="text-right px-3 text-amber-600 dark:text-amber-400">+19%</td>
+                <td class="px-3 text-xs">High malpractice premiums, NYC spillover</td>
+              </tr>
+              <tr class="border-b border-gray-100 dark:border-gray-800">
+                <td class="py-2 px-3 font-medium">Massachusetts</td>
+                <td class="text-right px-3">115</td>
+                <td class="text-right px-3 text-amber-600 dark:text-amber-400">+15%</td>
+                <td class="px-3 text-xs">Boston wage premium, high staff costs</td>
+              </tr>
+              <tr class="border-b border-gray-100 dark:border-gray-800">
+                <td class="py-2 px-3 font-medium">National Average</td>
+                <td class="text-right px-3 font-semibold">100</td>
+                <td class="text-right px-3">—</td>
+                <td class="px-3 text-xs">Baseline</td>
+              </tr>
+              <tr class="border-b border-gray-100 dark:border-gray-800">
+                <td class="py-2 px-3 font-medium">Montana</td>
+                <td class="text-right px-3">88</td>
+                <td class="text-right px-3 text-teal-600 dark:text-teal-400">-12%</td>
+                <td class="px-3 text-xs">Rural labor market, low overhead</td>
+              </tr>
+              <tr class="border-b border-gray-100 dark:border-gray-800">
+                <td class="py-2 px-3 font-medium">Arkansas</td>
+                <td class="text-right px-3">84</td>
+                <td class="text-right px-3 text-teal-600 dark:text-teal-400">-16%</td>
+                <td class="px-3 text-xs">Low wages, low rents, low malpractice</td>
+              </tr>
+              <tr class="border-b border-gray-100 dark:border-gray-800">
+                <td class="py-2 px-3 font-medium">Alabama</td>
+                <td class="text-right px-3">83</td>
+                <td class="text-right px-3 text-teal-600 dark:text-teal-400">-17%</td>
+                <td class="px-3 text-xs">Low labor costs, rural provider market</td>
+              </tr>
+              <tr>
+                <td class="py-2 px-3 font-medium">Mississippi</td>
+                <td class="text-right px-3">80</td>
+                <td class="text-right px-3 text-teal-600 dark:text-teal-400">-20%</td>
+                <td class="px-3 text-xs">Lowest wages in US, low malpractice</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="text-xs text-gray-500 dark:text-gray-500 mt-2">Source: Derived from CMS GPCI values and PlainProcedure Medicare payment data, 2023. Index figures are approximations for illustrative purposes.</p>
+      </section>
+
+      <section>
+        <h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 mt-8 mb-3">Provider Density and Market Competition</h2>
+        <p class="text-gray-700 dark:text-gray-300">Beyond GPCI adjustments, the number of providers in a market significantly affects costs. Research by the Dartmouth Institute for Health Policy shows that regions with more specialists and hospital beds tend to deliver more services per patient — not necessarily because patients are sicker, but because supply drives its own demand in healthcare markets.</p>
+        <p class="text-gray-700 dark:text-gray-300 mt-3">Conversely, markets with concentrated hospital systems (few competing hospitals) often have higher prices because insurers and Medicare lack negotiating leverage. Rural areas may have lower Medicare rates due to GPCI adjustments, but limited provider choice means patients may travel hundreds of miles for specialized care.</p>
+      </section>
+
+      <section>
+        <h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 mt-8 mb-3">State-Level Regulations That Affect Costs</h2>
+        <p class="text-gray-700 dark:text-gray-300">State regulations create additional cost variation beyond what CMS controls through the GPCI:</p>
+        <ul class="list-disc pl-6 mt-3 space-y-2 text-gray-700 dark:text-gray-300">
+          <li><strong>Certificate-of-need (CON) laws</strong> — 35 states require state approval before hospitals can add beds, services, or equipment. CON laws reduce supply and can maintain high prices by limiting competition.</li>
+          <li><strong>Scope-of-practice laws</strong> — States that allow nurse practitioners and physician assistants to practice independently have higher provider supply and often lower costs for routine services.</li>
+          <li><strong>Malpractice tort reform</strong> — States with damage caps (Texas, California) have lower malpractice insurance premiums and, consequently, lower GPCI practice cost values. High-liability states like New York have the opposite effect.</li>
+          <li><strong>Medicaid expansion</strong> — States that expanded Medicaid under the ACA shifted some low-income patients from charity care to reimbursed care, affecting hospitals' financial structures and indirectly influencing cost allocation.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 mt-8 mb-3">What This Means for Patients</h2>
+        <p class="text-gray-700 dark:text-gray-300">For Medicare beneficiaries, the 20% coinsurance scales directly with the Medicare payment — so a procedure that costs $1,620 in Louisiana might cost $2,340 in California for the same 20% coinsurance. Over a year of multiple procedures, these differences accumulate significantly.</p>
+        <p class="text-gray-700 dark:text-gray-300 mt-3">For elective procedures with significant geographic variation, some patients choose "medical tourism" within the US — traveling to lower-cost regions for major surgeries. This practice is especially common for spinal fusion, joint replacement, and other high-cost elective procedures.</p>
+        <p class="text-gray-700 dark:text-gray-300 mt-3">
+          Explore cost variation for any procedure across all states by visiting our <a href="/states/" class="text-sky-600 dark:text-sky-400 hover:underline">state comparison pages</a>, or search for a specific <a href="/procedures/" class="text-sky-600 dark:text-sky-400 hover:underline">procedure</a> to see how prices differ.
+        </p>
+      </section>
+
+      <section>
+        <h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 mt-8 mb-3">Is High Cost the Same as High Quality?</h2>
+        <p class="text-gray-700 dark:text-gray-300">Research consistently shows that geographic cost variation does not track with quality of care. The Dartmouth Atlas Project found that Medicare spending in Miami is roughly twice that of Minneapolis — but patient outcomes are not significantly better in Miami. High-spending areas often have more hospitalizations and specialist visits, but not proportionally better survival rates or patient satisfaction scores.</p>
+        <p class="text-gray-700 dark:text-gray-300 mt-3">This suggests that much of the geographic variation in Medicare costs reflects local practice patterns, supply-side incentives, and pricing power — not patient needs or care quality. Being in a higher-cost state does not guarantee better care.</p>
+      </section>
+
+      <!-- FAQ -->
+      <section class="mt-10">
+        <h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 mb-4">Frequently Asked Questions</h2>
+        <div class="divide-y divide-gray-200 dark:divide-gray-700 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+          {faqItems.map((item, i) => (
+            <details class="group bg-white dark:bg-gray-900" open={i === 0}>
+              <summary class="flex cursor-pointer items-center justify-between px-4 py-3 font-medium text-gray-900 dark:text-gray-100 [&::-webkit-details-marker]:hidden list-none">
+                {item.q}
+                <svg class="h-5 w-5 shrink-0 text-gray-400 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                </svg>
+              </summary>
+              <p class="px-4 pb-4 text-sm text-gray-600 dark:text-gray-400">{item.a}</p>
+            </details>
+          ))}
+        </div>
+      </section>
+
+      <!-- Sources -->
+      <section class="mt-8 p-4 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
+        <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">Sources</h2>
+        <ul class="text-xs text-gray-500 dark:text-gray-500 space-y-1">
+          <li>CMS Medicare Physician &amp; Other Practitioners by Provider and Service, 2023. Centers for Medicare &amp; Medicaid Services.</li>
+          <li>CMS Geographic Practice Cost Indices, 2023 Final Rule. Federal Register.</li>
+          <li>Dartmouth Atlas of Health Care, Geographic Variation in Medicare Spending. The Dartmouth Institute, 2023.</li>
+          <li>National Conference of State Legislatures. Certificate of Need State Laws, 2023.</li>
+          <li>American Medical Association. State Scope of Practice Laws, 2023.</li>
+        </ul>
+      </section>
+
+      <!-- Disclaimer -->
+      <p class="text-xs text-gray-400 dark:text-gray-500 mt-6 italic">
+        This guide is for informational and educational purposes only. Cost index figures are approximations derived from CMS GPCI data. Individual procedure costs vary by provider, location, and year. Consult your provider for specific cost estimates.
+      </p>
+
+    </div>
+  </article>
+
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": faqItems.map(item => ({
+      "@type": "Question",
+      "name": item.q,
+      "acceptedAnswer": { "@type": "Answer", "text": item.a }
+    }))
+  })} />
+</Base>

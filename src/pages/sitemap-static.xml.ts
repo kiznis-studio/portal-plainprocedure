@@ -15,6 +15,12 @@ export const GET: APIRoute = async () => {
     { loc: '/privacy', priority: '0.2', changefreq: 'yearly' },
     { loc: '/terms', priority: '0.2', changefreq: 'yearly' },
     { loc: '/contact', priority: '0.3', changefreq: 'yearly' },
+    { loc: '/guides/', priority: '0.8', changefreq: 'weekly' },
+    { loc: '/guides/understanding-medicare-costs', priority: '0.7', changefreq: 'monthly' },
+    { loc: '/guides/most-expensive-procedures-in-america', priority: '0.7', changefreq: 'monthly' },
+    { loc: '/guides/why-healthcare-costs-vary-by-state', priority: '0.7', changefreq: 'monthly' },
+    { loc: '/guides/how-to-read-a-medical-bill', priority: '0.7', changefreq: 'monthly' },
+    { loc: '/guides/hospital-markup-explained', priority: '0.7', changefreq: 'monthly' },
   ];
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>

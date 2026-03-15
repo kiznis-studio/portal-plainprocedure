@@ -1,0 +1,267 @@
+---
+export const prerender = false;
+import Base from '../../layouts/Base.astro';
+
+const faqItems = [
+  {
+    q: 'What is the difference between an Explanation of Benefits and a bill?',
+    a: 'An Explanation of Benefits (EOB) is a statement from your insurer — not a bill — that explains what was billed, what the insurer paid, and what you owe. An actual bill comes separately from the provider. Many patients mistake EOBs for bills and pay them, which can lead to double payments. Always wait for the actual bill from the provider before paying.'
+  },
+  {
+    q: 'What does "Amount Billed" vs "Amount Allowed" vs "Amount Paid" mean?',
+    a: '"Amount Billed" is the provider\'s chargemaster rate — what they submitted to insurance. "Amount Allowed" is the negotiated rate your insurer has with the provider (or Medicare\'s approved amount). "Amount Paid" is what the insurer actually paid. The difference between Amount Billed and Amount Allowed is the "contractual adjustment" — a discount your insurer negotiated on your behalf that you do not owe.'
+  },
+  {
+    q: 'Why does my bill have multiple dates and providers?',
+    a: 'A single hospital visit typically generates multiple bills from different providers: the hospital (facility fee), each physician (surgeon, anesthesiologist, radiologist, pathologist), and any labs or imaging centers. Each bills separately on different timelines. It is common to receive 3-8 separate bills for a single surgical procedure over a 2-4 week period.'
+  },
+  {
+    q: 'What should I do if I find an error on my bill?',
+    a: 'Contact the provider\'s billing department immediately. Request an itemized bill (a line-by-line list of every charge with CPT or HCPCS codes). Compare it against your EOB. Common errors include duplicate charges, incorrect patient information (leading to wrong insurance billing), and upcoded procedures (billing for a more complex service than was provided). If the provider won\'t correct an error, contact your insurer or your state insurance commissioner.'
+  },
+  {
+    q: 'Can I negotiate my medical bill?',
+    a: 'Yes, and it is often very effective. Providers frequently accept lower payments from self-pay patients who ask — sometimes as low as the Medicare rate. Key strategies: request an itemized bill, identify errors, ask about financial assistance programs, offer a prompt full payment in exchange for a discount (many providers give 10-30% off for immediate payment), and ask about payment plans. Never pay the full chargemaster rate without asking for a reduction.'
+  },
+  {
+    q: 'What does "balance billing" mean and is it legal?',
+    a: 'Balance billing occurs when an out-of-network provider bills you for the difference between their charge and what your insurer paid. Under the No Surprises Act (effective 2022), balance billing for most emergency services and certain non-emergency services at in-network facilities is now prohibited. If you receive an unexpected balance bill, you may have the right to dispute it through the federal IDR process.'
+  },
+];
+---
+
+<Base
+  title="How to Read a Medical Bill — PlainProcedure"
+  description="A practical guide to understanding every line on your medical bill — from billed charges to CPT codes, EOBs, contractual adjustments, and what you actually owe."
+  breadcrumbs={[{ name: 'Home', href: '/' }, { name: 'Guides', href: '/guides/' }, { name: 'How to Read a Medical Bill' }]}
+>
+  <article class="mx-auto max-w-3xl px-4 py-8 md:py-12">
+    <h1 class="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-3">How to Read a Medical Bill</h1>
+    <p class="text-lg text-gray-600 dark:text-gray-400 mb-6">
+      Medical bills are notoriously confusing — and deliberately so. This guide walks through every section so you know exactly what you owe and what you don't.
+    </p>
+
+    <div class="p-4 rounded-lg bg-sky-50 dark:bg-sky-950/20 border border-sky-200 dark:border-sky-800 mb-8">
+      <p class="font-semibold text-sky-800 dark:text-sky-200 mb-1">Key Takeaway</p>
+      <p class="text-sm text-sky-700 dark:text-sky-300">The "Amount Billed" on a medical bill is almost never what you owe. Between insurance adjustments, contractual discounts, and your specific cost-sharing responsibilities, most patients owe a small fraction of the billed charge. Always request an itemized bill and compare it against your Explanation of Benefits before paying anything.</p>
+    </div>
+
+    <div class="prose dark:prose-invert max-w-none space-y-6">
+
+      <section>
+        <h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 mt-8 mb-3">The Anatomy of a Medical Bill</h2>
+        <p class="text-gray-700 dark:text-gray-300">Most medical bills — whether from a hospital, physician group, or outpatient facility — contain the same core sections. Understanding each section prevents overpayment and helps you spot errors.</p>
+
+        <div class="overflow-x-auto mt-4">
+          <table class="w-full text-sm border-collapse">
+            <thead>
+              <tr class="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+                <th class="text-left py-2 px-3 text-gray-900 dark:text-gray-100">Bill Section</th>
+                <th class="text-left py-2 px-3 text-gray-900 dark:text-gray-100">What It Means</th>
+                <th class="text-left py-2 px-3 text-gray-900 dark:text-gray-100">What to Check</th>
+              </tr>
+            </thead>
+            <tbody class="text-gray-700 dark:text-gray-300">
+              <tr class="border-b border-gray-100 dark:border-gray-800">
+                <td class="py-2 px-3 font-medium">Patient Information</td>
+                <td class="py-2 px-3">Your name, DOB, insurance ID</td>
+                <td class="py-2 px-3 text-xs">Errors here cause insurance denials</td>
+              </tr>
+              <tr class="border-b border-gray-100 dark:border-gray-800">
+                <td class="py-2 px-3 font-medium">Date(s) of Service</td>
+                <td class="py-2 px-3">When the service was provided</td>
+                <td class="py-2 px-3 text-xs">Match against your records — wrong dates = wrong coverage</td>
+              </tr>
+              <tr class="border-b border-gray-100 dark:border-gray-800">
+                <td class="py-2 px-3 font-medium">Procedure / CPT Code</td>
+                <td class="py-2 px-3">5-digit code identifying each service</td>
+                <td class="py-2 px-3 text-xs">Verify codes match what was actually done</td>
+              </tr>
+              <tr class="border-b border-gray-100 dark:border-gray-800">
+                <td class="py-2 px-3 font-medium">Amount Billed</td>
+                <td class="py-2 px-3">Provider's chargemaster rate</td>
+                <td class="py-2 px-3 text-xs">You almost never owe this amount</td>
+              </tr>
+              <tr class="border-b border-gray-100 dark:border-gray-800">
+                <td class="py-2 px-3 font-medium">Contractual Adjustment</td>
+                <td class="py-2 px-3">Discount negotiated by your insurer</td>
+                <td class="py-2 px-3 text-xs">You do not owe this — it is written off</td>
+              </tr>
+              <tr class="border-b border-gray-100 dark:border-gray-800">
+                <td class="py-2 px-3 font-medium">Amount Allowed</td>
+                <td class="py-2 px-3">What insurer or Medicare approved</td>
+                <td class="py-2 px-3 text-xs">Your cost-sharing is based on this amount</td>
+              </tr>
+              <tr class="border-b border-gray-100 dark:border-gray-800">
+                <td class="py-2 px-3 font-medium">Insurance Paid</td>
+                <td class="py-2 px-3">Amount the insurer paid the provider</td>
+                <td class="py-2 px-3 text-xs">Match to your EOB — discrepancies indicate errors</td>
+              </tr>
+              <tr class="border-b border-gray-100 dark:border-gray-800">
+                <td class="py-2 px-3 font-medium">Deductible Applied</td>
+                <td class="py-2 px-3">Amount counted toward your annual deductible</td>
+                <td class="py-2 px-3 text-xs">Track this across all your bills for the year</td>
+              </tr>
+              <tr>
+                <td class="py-2 px-3 font-medium">Patient Responsibility</td>
+                <td class="py-2 px-3">What you actually owe</td>
+                <td class="py-2 px-3 text-xs">This is the only amount you should pay</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section>
+        <h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 mt-8 mb-3">Understanding CPT Codes on Your Bill</h2>
+        <p class="text-gray-700 dark:text-gray-300">Every service on your bill is identified by a Current Procedural Terminology (CPT) code — a 5-digit number assigned by the American Medical Association. These codes are the same ones used by Medicare to set payment rates, which means you can look up exactly what Medicare pays for any code in our database.</p>
+        <p class="text-gray-700 dark:text-gray-300 mt-3">Common codes you'll see on bills include:</p>
+
+        <div class="overflow-x-auto mt-4">
+          <table class="w-full text-sm border-collapse">
+            <thead>
+              <tr class="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+                <th class="text-right py-2 px-3 text-gray-900 dark:text-gray-100">CPT Code</th>
+                <th class="text-left py-2 px-3 text-gray-900 dark:text-gray-100">Description</th>
+                <th class="text-right py-2 px-3 text-gray-900 dark:text-gray-100">Medicare Pays</th>
+                <th class="text-right py-2 px-3 text-gray-900 dark:text-gray-100">Typical Billed</th>
+              </tr>
+            </thead>
+            <tbody class="text-gray-700 dark:text-gray-300">
+              <tr class="border-b border-gray-100 dark:border-gray-800">
+                <td class="py-2 px-3 text-right font-mono text-xs">99202</td>
+                <td class="py-2 px-3">New patient office visit, straightforward</td>
+                <td class="text-right px-3">$49</td>
+                <td class="text-right px-3">$112</td>
+              </tr>
+              <tr class="border-b border-gray-100 dark:border-gray-800">
+                <td class="py-2 px-3 text-right font-mono text-xs">99213</td>
+                <td class="py-2 px-3">Established patient visit, moderate complexity</td>
+                <td class="text-right px-3">$77</td>
+                <td class="text-right px-3">$198</td>
+              </tr>
+              <tr class="border-b border-gray-100 dark:border-gray-800">
+                <td class="py-2 px-3 text-right font-mono text-xs">80053</td>
+                <td class="py-2 px-3">Comprehensive metabolic panel (blood panel)</td>
+                <td class="text-right px-3">$14</td>
+                <td class="text-right px-3">$68</td>
+              </tr>
+              <tr class="border-b border-gray-100 dark:border-gray-800">
+                <td class="py-2 px-3 text-right font-mono text-xs">71046</td>
+                <td class="py-2 px-3">Chest X-ray, 2 views</td>
+                <td class="text-right px-3">$22</td>
+                <td class="text-right px-3">$142</td>
+              </tr>
+              <tr class="border-b border-gray-100 dark:border-gray-800">
+                <td class="py-2 px-3 text-right font-mono text-xs">93000</td>
+                <td class="py-2 px-3">Electrocardiogram (EKG/ECG)</td>
+                <td class="text-right px-3">$17</td>
+                <td class="text-right px-3">$94</td>
+              </tr>
+              <tr class="border-b border-gray-100 dark:border-gray-800">
+                <td class="py-2 px-3 text-right font-mono text-xs">70553</td>
+                <td class="py-2 px-3">MRI brain without contrast</td>
+                <td class="text-right px-3">$232</td>
+                <td class="text-right px-3">$2,100</td>
+              </tr>
+              <tr>
+                <td class="py-2 px-3 text-right font-mono text-xs">45378</td>
+                <td class="py-2 px-3">Colonoscopy, diagnostic</td>
+                <td class="text-right px-3">$217</td>
+                <td class="text-right px-3">$1,850</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="text-xs text-gray-500 dark:text-gray-500 mt-2">Source: CMS Medicare Physician &amp; Other Practitioners dataset, 2023. National averages.</p>
+        <p class="text-gray-700 dark:text-gray-300 mt-3">
+          You can look up any CPT code on PlainProcedure to see the Medicare benchmark. Use our <a href="/search" class="text-sky-600 dark:text-sky-400 hover:underline">search tool</a> or <a href="/procedures/" class="text-sky-600 dark:text-sky-400 hover:underline">browse all procedures</a>.
+        </p>
+      </section>
+
+      <section>
+        <h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 mt-8 mb-3">Common Billing Errors to Watch For</h2>
+        <p class="text-gray-700 dark:text-gray-300">Studies estimate that 80% of medical bills contain at least one error. The most common billing mistakes include:</p>
+        <ul class="list-disc pl-6 mt-3 space-y-2 text-gray-700 dark:text-gray-300">
+          <li><strong>Duplicate charges</strong> — The same service billed twice, often on the same or adjacent dates</li>
+          <li><strong>Upcoding</strong> — Billing for a higher-complexity code than the service actually performed (e.g., billing a level-5 visit when only a level-3 was done)</li>
+          <li><strong>Unbundling</strong> — Billing separately for components that should be packaged into a single code</li>
+          <li><strong>Wrong patient or insurance info</strong> — Causes denials and may mean charges go to the wrong person</li>
+          <li><strong>Services not rendered</strong> — Being billed for a procedure that wasn't performed or was canceled</li>
+          <li><strong>Operating room time errors</strong> — OR time is often rounded up and can be inflated</li>
+          <li><strong>Room charges during outpatient procedures</strong> — You should not be billed for an inpatient room if you were in outpatient status</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 mt-8 mb-3">Step-by-Step: How to Dispute a Bill</h2>
+        <ol class="list-decimal pl-6 mt-3 space-y-2 text-gray-700 dark:text-gray-300">
+          <li><strong>Request an itemized bill</strong> — Ask for a line-by-line breakdown with CPT codes. You have the legal right to this in most states.</li>
+          <li><strong>Get your Explanation of Benefits (EOB)</strong> — Your insurer sends this after processing a claim. Compare every line to the provider's itemized bill.</li>
+          <li><strong>Look up CPT codes</strong> — Use PlainProcedure to verify that Medicare rates align with what you're being charged. Flag anything that seems inflated.</li>
+          <li><strong>Contact billing directly</strong> — Call the provider's billing department (not the front desk) and explain the discrepancy. Document every call with date, time, and representative's name.</li>
+          <li><strong>Ask for a review or supervisor</strong> — If the billing rep won't help, ask for their supervisor or the patient advocate.</li>
+          <li><strong>File an appeal with your insurer</strong> — If a claim was denied, you have the right to appeal. Deadlines are typically 30-180 days from the denial notice.</li>
+          <li><strong>Contact your state insurance department</strong> — If the insurer won't resolve the issue, your state insurance commissioner's office can investigate.</li>
+        </ol>
+      </section>
+
+      <section>
+        <h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 mt-8 mb-3">The No Surprises Act: Your New Protections</h2>
+        <p class="text-gray-700 dark:text-gray-300">Effective January 1, 2022, the federal No Surprises Act limits unexpected out-of-network bills in several situations:</p>
+        <ul class="list-disc pl-6 mt-3 space-y-1 text-gray-700 dark:text-gray-300">
+          <li>Emergency services at any hospital, regardless of network status</li>
+          <li>Non-emergency services at in-network facilities when the provider is out-of-network (e.g., an out-of-network anesthesiologist at an in-network hospital)</li>
+          <li>Air ambulance services from certain providers</li>
+        </ul>
+        <p class="text-gray-700 dark:text-gray-300 mt-3">If you receive a balance bill that violates these rules, you can dispute it through the federal Independent Dispute Resolution (IDR) process. Contact CMS at 1-800-MEDICARE or visit cms.gov for guidance.</p>
+      </section>
+
+      <!-- FAQ -->
+      <section class="mt-10">
+        <h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 mb-4">Frequently Asked Questions</h2>
+        <div class="divide-y divide-gray-200 dark:divide-gray-700 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+          {faqItems.map((item, i) => (
+            <details class="group bg-white dark:bg-gray-900" open={i === 0}>
+              <summary class="flex cursor-pointer items-center justify-between px-4 py-3 font-medium text-gray-900 dark:text-gray-100 [&::-webkit-details-marker]:hidden list-none">
+                {item.q}
+                <svg class="h-5 w-5 shrink-0 text-gray-400 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                </svg>
+              </summary>
+              <p class="px-4 pb-4 text-sm text-gray-600 dark:text-gray-400">{item.a}</p>
+            </details>
+          ))}
+        </div>
+      </section>
+
+      <!-- Sources -->
+      <section class="mt-8 p-4 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
+        <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">Sources</h2>
+        <ul class="text-xs text-gray-500 dark:text-gray-500 space-y-1">
+          <li>CMS Medicare Physician &amp; Other Practitioners by Provider and Service, 2023.</li>
+          <li>Centers for Medicare &amp; Medicaid Services. No Surprises Act Overview, 2022.</li>
+          <li>Patient Advocate Foundation. Medical Billing Errors Guide, 2023.</li>
+          <li>Medical Billing Advocates of America. Common Billing Errors, 2023.</li>
+          <li>American Medical Association. CPT Code Overview, 2023.</li>
+        </ul>
+      </section>
+
+      <!-- Disclaimer -->
+      <p class="text-xs text-gray-400 dark:text-gray-500 mt-6 italic">
+        This guide is for informational purposes only and does not constitute legal or financial advice. Medical billing laws and procedures vary by state and insurer. Always consult with a patient advocate, your insurer, or a healthcare attorney for specific billing disputes.
+      </p>
+
+    </div>
+  </article>
+
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": faqItems.map(item => ({
+      "@type": "Question",
+      "name": item.q,
+      "acceptedAnswer": { "@type": "Answer", "text": item.a }
+    }))
+  })} />
+</Base>
