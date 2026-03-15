@@ -262,10 +262,10 @@ export function searchProcedures(db: D1Database, query: string, limit: number = 
   return cached(`search:proc:${query}:${limit}`, async () => {
     const r = await db.prepare(
       `SELECT * FROM procedures
-       WHERE description LIKE ?1 OR code LIKE ?1
+       WHERE description LIKE ?1 OR code LIKE ?2
        ORDER BY national_total_services DESC
-       LIMIT ?2`
-    ).bind(q, limit).all<Procedure>();
+       LIMIT ?3`
+    ).bind(q, q, limit).all<Procedure>();
     return r.results;
   });
 }
@@ -275,10 +275,10 @@ export function searchHospitals(db: D1Database, query: string, limit: number = 2
   return cached(`search:hosp:${query}:${limit}`, async () => {
     const r = await db.prepare(
       `SELECT * FROM hospitals
-       WHERE name LIKE ?1 OR city LIKE ?1
+       WHERE name LIKE ?1 OR city LIKE ?2
        ORDER BY name COLLATE NOCASE
-       LIMIT ?2`
-    ).bind(q, limit).all<Hospital>();
+       LIMIT ?3`
+    ).bind(q, q, limit).all<Hospital>();
     return r.results;
   });
 }
