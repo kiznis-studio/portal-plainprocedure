@@ -1,8 +1,32 @@
 import { defineMiddleware } from 'astro:middleware';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { gzipSync, gunzipSync } from 'node:zlib';
+import http from 'node:http';
 import { createD1Adapter } from './lib/d1-adapter';
 import { warmQueryCache } from './lib/db';
+
+// --- Sitemap disk cache ---
+const SITEMAP_CACHE_DIR = '/tmp/sitemap-cache';
+try { mkdirSync(SITEMAP_CACHE_DIR, { recursive: true }); } catch {}
+
+function sitemapCachePath(urlPath: string): string {
+  return `${SITEMAP_CACHE_DIR}/${encodeURIComponent(urlPath)}.xml`;
+}
+
+function getSitemapFromDisk(urlPath: string): string | null {
+  const fp = sitemapCachePath(urlPath);
+  try { return readFileSync(fp, 'utf-8'); } catch { return null; }
+}
+
+function saveSitemapToDisk(urlPath: string, body: string): void {
+  try { writeFileSync(sitemapCachePath(urlPath), body, 'utf-8'); } catch {}
+}
+
+function isSitemapPath(p: string): boolean {
+  return (p.includes('sitemap') || p === '/robots.txt') && (p.endsWith('.xml') || p === '/robots.txt');
+}
+
+let sitemapsWarmed = false;
 
 // --- DB initialization ---
 const DATABASE_PATH = process.env.DATABASE_PATH || '/data/portal.db';
@@ -79,6 +103,54 @@ function startBackgroundWarming(): void {
   })();
 }
 startBackgroundWarming();
+
+// --- Sitemap background warming ---
+function warmSitemaps(): void {
+  if (!IS_WARM_WORKER) return;
+  const port = parseInt(process.env.PORT || '4321');
+
+  function selfFetch(urlPath: string): Promise<string> {
+    return new Promise((resolve) => {
+      const req = http.get({ hostname: '127.0.0.1', port, path: urlPath, timeout: 30000 }, (res) => {
+        let body = '';
+        res.on('data', (c: Buffer) => body += c);
+        res.on('end', () => resolve(body));
+      });
+      req.on('error', () => resolve(''));
+      req.on('timeout', () => { req.destroy(); resolve(''); });
+    });
+  }
+
+  const checkInterval = setInterval(async () => {
+    if (!cacheWarmed) return;
+    clearInterval(checkInterval);
+    try {
+      const indexXml = await selfFetch('/sitemap-index.xml');
+      if (!indexXml.includes('<sitemapindex') && !indexXml.includes('<urlset')) {
+        const fallback = await selfFetch('/sitemap.xml');
+        if (fallback.includes('<urlset')) saveSitemapToDisk('/sitemap.xml', fallback);
+        sitemapsWarmed = true;
+        return;
+      }
+      saveSitemapToDisk('/sitemap-index.xml', indexXml);
+      const locs = [...indexXml.matchAll(/<loc>(.*?)<\/loc>/g)].map(m => {
+        try { return new URL(m[1]).pathname; } catch { return null; }
+      }).filter(Boolean) as string[];
+      let warmed = 1;
+      for (const loc of locs) {
+        if (getSitemapFromDisk(loc)) { warmed++; continue; }
+        const xml = await selfFetch(loc);
+        if (xml && xml.length > 50) { saveSitemapToDisk(loc, xml); warmed++; }
+      }
+      console.log(`[sitemap-cache] Warmed ${warmed} sitemaps to disk`);
+    } catch (err) {
+      console.error('[sitemap-cache] Warming failed:', (err as Error).message);
+    }
+    sitemapsWarmed = true;
+  }, 2000);
+  checkInterval.unref();
+}
+warmSitemaps();
 
 // --- Compressed LRU response cache ---
 interface CacheEntry {
@@ -168,6 +240,17 @@ export const onRequest = defineMiddleware(async (context, next) => {
   if (context.request.method === 'GET') {
     const cacheKey = path + context.url.search;
 
+    // L0: Sitemap disk cache — sitemaps are immutable between deploys
+    if (isSitemapPath(path)) {
+      const diskCached = getSitemapFromDisk(path);
+      if (diskCached) {
+        const ct = path === '/robots.txt' ? 'text/plain' : 'application/xml';
+        return new Response(diskCached, {
+          headers: { 'Content-Type': ct, 'Cache-Control': 'public, max-age=300, s-maxage=86400', 'X-Cache': 'DISK' },
+        });
+      }
+    }
+
     // L1: In-memory LRU cache
     const cached = getCached(cacheKey);
     if (cached) return cached;
@@ -189,6 +272,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
           const ttl = ct.includes('xml') ? 86400 : getEdgeTtl(path);
           const body = await response.text();
           const cc = `public, max-age=300, s-maxage=${ttl}`;
+          if (isSitemapPath(path) && body.length > 50) saveSitemapToDisk(path, body);
           setCache(cacheKey, body, ct, cc);
           return new Response(body, {
             headers: { 'Content-Type': ct, 'Cache-Control': cc, 'X-Cache': 'MISS' },
