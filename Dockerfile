@@ -27,6 +27,7 @@ COPY --from=builder --chown=app:app /app/dist ./dist
 COPY --from=builder --chown=app:app /app/node_modules ./node_modules
 COPY --from=builder --chown=app:app /app/package.json ./
 COPY --chown=app:app cluster-entry.mjs ./
+COPY --chown=app:app memory-budget.mjs ./
 USER app
 ENV HOST=0.0.0.0
 ENV PORT=4321

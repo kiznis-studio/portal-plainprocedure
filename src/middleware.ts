@@ -6,6 +6,8 @@ import { createD1Adapter } from './lib/d1-adapter';
 import { warmQueryCache } from './lib/db';
 
 // --- Sitemap disk cache ---
+// Sitemaps are immutable between deploys (data doesn't change during container lifetime).
+// Generate once → store on disk → serve instantly. Container restart clears /tmp naturally.
 const SITEMAP_CACHE_DIR = '/tmp/sitemap-cache';
 try { mkdirSync(SITEMAP_CACHE_DIR, { recursive: true }); } catch {}
 
@@ -28,6 +30,7 @@ function isSitemapPath(p: string): boolean {
 
 let sitemapsWarmed = false;
 
+// Container memory awareness — reads cgroup v2 metrics (all workers combined)
 function containerMemoryPct(): number {
   try {
     const max = parseInt(readFileSync('/sys/fs/cgroup/memory.max', 'utf-8').trim());
@@ -113,6 +116,8 @@ function startBackgroundWarming(): void {
 startBackgroundWarming();
 
 // --- Sitemap background warming ---
+// After main cache warms, self-fetch all sitemaps to populate disk cache.
+// Sequential, low priority — does not block request serving.
 function warmSitemaps(): void {
   if (!IS_WARM_WORKER) return;
   const port = parseInt(process.env.PORT || '4321');
@@ -129,22 +134,32 @@ function warmSitemaps(): void {
     });
   }
 
+  // Wait for main cache warming + a few seconds for the server to settle
   const checkInterval = setInterval(async () => {
     if (!cacheWarmed) return;
     clearInterval(checkInterval);
+
     try {
       const indexXml = await selfFetch('/sitemap-index.xml');
       if (!indexXml.includes('<sitemapindex') && !indexXml.includes('<urlset')) {
+        // No sitemap index — try /sitemap.xml
         const fallback = await selfFetch('/sitemap.xml');
-        if (fallback.includes('<urlset')) saveSitemapToDisk('/sitemap.xml', fallback);
+        if (fallback.includes('<urlset')) {
+          saveSitemapToDisk('/sitemap.xml', fallback);
+          console.log('[sitemap-cache] Warmed 1 sitemap (sitemap.xml)');
+        }
         sitemapsWarmed = true;
         return;
       }
+
       saveSitemapToDisk('/sitemap-index.xml', indexXml);
+
+      // Parse child sitemap URLs
       const locs = [...indexXml.matchAll(/<loc>(.*?)<\/loc>/g)].map(m => {
         try { return new URL(m[1]).pathname; } catch { return null; }
       }).filter(Boolean) as string[];
-      let warmed = 1;
+
+      let warmed = 1; // index already cached
       for (const loc of locs) {
         // Memory-aware throttle: gentle slowdown under pressure, never stops
         const memPct = containerMemoryPct();
@@ -153,9 +168,13 @@ function warmSitemaps(): void {
         } else if (memPct > 0.65) {
           await new Promise(r => setTimeout(r, 5000));  // 5s — moderate
         }
-        if (getSitemapFromDisk(loc)) { warmed++; continue; }
+        if (getSitemapFromDisk(loc)) { warmed++; continue; } // already cached
         const xml = await selfFetch(loc);
-        if (xml && xml.length > 50) { saveSitemapToDisk(loc, xml); warmed++; }
+        if (xml && xml.length > 50) {
+          saveSitemapToDisk(loc, xml);
+          warmed++;
+        }
+        // Throttle: 2s pause between sitemaps to limit CPU/memory pressure
         await new Promise(r => setTimeout(r, 2000));
       }
       console.log(`[sitemap-cache] Warmed ${warmed} sitemaps to disk`);
@@ -168,43 +187,35 @@ function warmSitemaps(): void {
 }
 warmSitemaps();
 
-// --- Compressed LRU response cache ---
-interface CacheEntry {
-  compressed: Buffer;
-  contentType: string;
-  cacheControl: string;
-  hits: number;
-}
+// --- Compressed LRU response cache (disabled in cluster mode — primary handles caching) ---
+interface CacheEntry { compressed: Buffer; contentType: string; cacheControl: string; hits: number; }
+const WORKER_CACHE_ENABLED = process.env.WORKER_RESPONSE_CACHE !== '0';
 const responseCache = new Map<string, CacheEntry>();
-const MAX_CACHE = parseInt(process.env.CACHE_ENTRIES || '5000', 10);
+const MAX_CACHE = WORKER_CACHE_ENABLED ? parseInt(process.env.CACHE_ENTRIES || '5000', 10) : 0;
 let totalHits = 0;
 let totalMisses = 0;
 
 function getCached(key: string): Response | null {
+  if (!WORKER_CACHE_ENABLED) return null;
   const entry = responseCache.get(key);
   if (!entry) { totalMisses++; return null; }
-  // LRU promote
   responseCache.delete(key);
   entry.hits++;
   responseCache.set(key, entry);
   totalHits++;
-  // Decompress — Caddy handles client compression
   return new Response(gunzipSync(entry.compressed), {
     headers: { 'Content-Type': entry.contentType, 'Cache-Control': entry.cacheControl, 'X-Cache': 'HIT' },
   });
 }
 
 function setCache(key: string, body: string, contentType: string, cacheControl: string) {
-  // Validate: only cache real HTML/XML
-  if (!body || body.length < 50) return;
-  const c0 = body.charCodeAt(0);
-  if (c0 !== 60) return; // must start with '<'
+  if (!WORKER_CACHE_ENABLED) return;
+  if (!body || body.length < 50 || body.charCodeAt(0) !== 60) return;
   if (responseCache.has(key)) responseCache.delete(key);
   if (responseCache.size >= MAX_CACHE) {
     const firstKey = responseCache.keys().next().value;
     if (firstKey) responseCache.delete(firstKey);
   }
-  // gzip level 1: 5-10x faster than level 6, only ~10% larger
   responseCache.set(key, { compressed: gzipSync(body, { level: 1 }), contentType, cacheControl, hits: 0 });
 }
 
@@ -214,6 +225,7 @@ function getCacheStats() {
   top.sort((a, b) => b.hits - a.hits);
   const total = totalHits + totalMisses;
   return {
+    enabled: WORKER_CACHE_ENABLED,
     size: responseCache.size, maxSize: MAX_CACHE,
     totalHits, totalMisses,
     hitRate: total > 0 ? Math.round(totalHits / total * 1000) / 1000 : 0,

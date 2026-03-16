@@ -35,36 +35,44 @@ function normalizeParams(sql: string): string {
 }
 
 // Exported metadata for health endpoint
-export const dbMeta = { mmapSize: 0, fileSizeBytes: 0 };
+export const dbMeta = { mmapSize: 0, fileSizeBytes: 0, cacheSizeKB: 0 };
 
-// Auto-tune SQLite pragmas based on DB file size.
-// mmap_size scales to full file size (virtual address space is free on 64-bit).
-// cache_size uses tiers (it's real RAM allocation).
+// Auto-tune SQLite pragmas based on memory budget.
+// Budget system sets SQLITE_CACHE_KB and SQLITE_MMAP_BYTES env vars.
+// Falls back to DB-size-based tiers if env vars are absent (backward-compatible).
 function applyPragmas(db: InstanceType<typeof Database>, dbPath: string) {
   let fileSize = 0;
   try { fileSize = statSync(dbPath).size; } catch { /* use defaults */ }
 
-  // cache_size: tiered by file size (negative = KB)
   const fileSizeMB = fileSize / (1024 * 1024);
-  let cacheSize: number;
-  if (fileSizeMB > 500) cacheSize = -65536;       // 64MB
-  else if (fileSizeMB > 100) cacheSize = -32768;   // 32MB
-  else if (fileSizeMB > 10) cacheSize = -16384;    // 16MB
-  else cacheSize = -4096;                           // 4MB
 
-  // mmap_size: capped to fit within Docker container memory limits
-  // Cap at 256MB — larger DBs still benefit from OS page cache outside mmap
-  const MMAP_CAP = 256 * 1024 * 1024;
-  const mmapSize = Math.min(Math.max(fileSize, 16 * 1024 * 1024), MMAP_CAP);
+  // cache_size: from budget or fallback to DB-size tiers
+  let cacheSizeKB: number;
+  if (process.env.SQLITE_CACHE_KB) {
+    cacheSizeKB = parseInt(process.env.SQLITE_CACHE_KB, 10);
+  } else if (fileSizeMB > 500) { cacheSizeKB = 65536; }   // 64MB
+  else if (fileSizeMB > 100) { cacheSizeKB = 32768; }      // 32MB
+  else if (fileSizeMB > 10) { cacheSizeKB = 16384; }       // 16MB
+  else { cacheSizeKB = 4096; }                              // 4MB
+
+  // mmap_size: from budget or fallback to capped file size
+  let mmapSize: number;
+  if (process.env.SQLITE_MMAP_BYTES) {
+    mmapSize = parseInt(process.env.SQLITE_MMAP_BYTES, 10);
+  } else {
+    const MMAP_CAP = 256 * 1024 * 1024;
+    mmapSize = Math.min(Math.max(fileSize, 16 * 1024 * 1024), MMAP_CAP);
+  }
 
   try {
-    db.pragma(`cache_size = ${cacheSize}`);
+    db.pragma(`cache_size = -${cacheSizeKB}`);
     db.pragma(`mmap_size = ${mmapSize}`);
     db.pragma('temp_store = MEMORY');
   } catch { /* non-critical */ }
 
   dbMeta.mmapSize = mmapSize;
   dbMeta.fileSizeBytes = fileSize;
+  dbMeta.cacheSizeKB = cacheSizeKB;
 }
 
 // Self-heal WAL mode databases on read-only mounts.

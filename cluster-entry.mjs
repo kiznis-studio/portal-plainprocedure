@@ -22,7 +22,7 @@ import { writeFileSync } from 'node:fs';
 import { gzipSync, gunzipSync } from 'node:zlib';
 
 const MIN_WORKERS = 1;
-const MAX_WORKERS = parseInt(process.env.WORKERS_MAX || '4', 10);
+const CONFIGURED_MAX_WORKERS = parseInt(process.env.WORKERS_MAX || '4', 10);
 const EXTERNAL_PORT = parseInt(process.env.PORT || '4321', 10);
 const INTERNAL_BASE_PORT = EXTERNAL_PORT + 10000; // workers: 14321, 14322, ...
 const HOST = process.env.HOST || '0.0.0.0';
@@ -33,8 +33,21 @@ if (cluster.isPrimary) {
   // Must be called before fork() and only in primary process.
   cluster.setupPrimary({ serialization: 'advanced' });
 
+  // ─── Memory budget — auto-calculates all allocations from cgroup limit ───
+  const { calculateBudget, logBudget } = await import('./memory-budget.mjs');
+  const budget = calculateBudget();
+  logBudget(budget);
+
+  const MAX_WORKERS = budget.effectiveWorkersMax;
+  if (MAX_WORKERS < CONFIGURED_MAX_WORKERS) {
+    console.warn(`[cluster] WORKERS_MAX reduced ${CONFIGURED_MAX_WORKERS} → ${MAX_WORKERS} (memory budget)`);
+  }
+
   // ─── Shared response cache (owned by primary) ───
-  const MAX_CACHE = parseInt(process.env.CACHE_ENTRIES || '5000', 10);
+  const MAX_CACHE = budget.responseCacheEntries;
+  if (process.env.CACHE_ENTRIES) {
+    console.warn(`[cluster] CACHE_ENTRIES env var ignored — using budget: ${MAX_CACHE} entries`);
+  }
   const responseCache = new Map(); // key → { compressed, contentType, cacheControl, hits }
   let totalHits = 0;
   let totalMisses = 0;
@@ -71,6 +84,10 @@ if (cluster.isPrimary) {
       WORKER_INTERNAL: '1',
       PORT: String(port),
       HOST: '127.0.0.1',
+      // Memory budget → workers
+      WORKER_RESPONSE_CACHE: '0',  // Primary handles all caching
+      SQLITE_CACHE_KB: String(budget.sqliteCacheKB),
+      SQLITE_MMAP_BYTES: String(budget.sqliteMmapBytes),
     });
     w._assignedPort = port;
     w.on('message', msg => handleWorkerMessage(w, msg));
@@ -94,14 +111,25 @@ if (cluster.isPrimary) {
   // ─── Shared query cache (broker for worker IPC) ───
   // Worker 0 warms queries → sends results to primary via IPC.
   // Other workers ask primary → get instant hits. Zero duplicate DB work.
+  // Bounded query cache with LRU eviction (budget-allocated)
+  const QUERY_CACHE_MAX = budget.queryCacheMax;
   const sharedQueryCache = new Map(); // key → value
+
+  function setQueryCache(key, value) {
+    if (sharedQueryCache.has(key)) sharedQueryCache.delete(key);
+    if (sharedQueryCache.size >= QUERY_CACHE_MAX) {
+      const firstKey = sharedQueryCache.keys().next().value;
+      if (firstKey !== undefined) sharedQueryCache.delete(firstKey);
+    }
+    sharedQueryCache.set(key, value);
+  }
 
   function handleWorkerMessage(worker, msg) {
     if (!msg || !msg.type) return;
 
     if (msg.type === 'qcache-set') {
       // Worker computed a value — store in shared cache
-      sharedQueryCache.set(msg.key, msg.value);
+      setQueryCache(msg.key, msg.value);
     }
 
     if (msg.type === 'qcache-get') {
@@ -128,7 +156,8 @@ if (cluster.isPrimary) {
   const BACKOFF_MS = 30_000;    // 30s cooldown before next restart attempt
   let backoffTimer = null;
 
-  console.log(`[cluster] Primary ${process.pid} starting ${targetWorkers} workers`);
+  targetWorkers = Math.min(targetWorkers, MAX_WORKERS);
+  console.log(`[cluster] Primary ${process.pid} starting ${targetWorkers} workers (max=${MAX_WORKERS})`);
   for (let i = 0; i < targetWorkers; i++) {
     forkWorker(i === 0);
   }
@@ -268,7 +297,7 @@ if (cluster.isPrimary) {
 
     proxyToWorker(req, res);
   }).listen(EXTERNAL_PORT, HOST, () => {
-    console.log(`[cluster] Caching proxy on :${EXTERNAL_PORT} (cache max=${MAX_CACHE})`);
+    console.log(`[cluster] Caching proxy on :${EXTERNAL_PORT} (cache=${MAX_CACHE} entries, qcache=${QUERY_CACHE_MAX} max)`);
   });
 
   // ─── Management API ───
@@ -302,7 +331,9 @@ if (cluster.isPrimary) {
         },
         queryCache: {
           size: sharedQueryCache.size,
+          maxSize: QUERY_CACHE_MAX,
         },
+        budget,
       }));
       return;
     }
