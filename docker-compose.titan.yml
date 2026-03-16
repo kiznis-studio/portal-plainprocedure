@@ -14,7 +14,7 @@ services:
       - MGMT_PORT=4322
     networks:
       - portals
-    mem_limit: 512m
+    mem_limit: 768m
     cpus: 0.5
 
 networks:
