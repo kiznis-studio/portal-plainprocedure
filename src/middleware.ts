@@ -28,6 +28,14 @@ function isSitemapPath(p: string): boolean {
 
 let sitemapsWarmed = false;
 
+function containerMemoryPct(): number {
+  try {
+    const max = parseInt(readFileSync('/sys/fs/cgroup/memory.max', 'utf-8').trim());
+    const cur = parseInt(readFileSync('/sys/fs/cgroup/memory.current', 'utf-8').trim());
+    return max > 0 ? cur / max : 0;
+  } catch { return 0; }
+}
+
 // --- DB initialization ---
 const DATABASE_PATH = process.env.DATABASE_PATH || '/data/portal.db';
 let db: ReturnType<typeof createD1Adapter> | null = null;
@@ -138,9 +146,17 @@ function warmSitemaps(): void {
       }).filter(Boolean) as string[];
       let warmed = 1;
       for (const loc of locs) {
+        // Memory-aware throttle: gentle slowdown under pressure, never stops
+        const memPct = containerMemoryPct();
+        if (memPct > 0.80) {
+          await new Promise(r => setTimeout(r, 30000)); // 30s — very gentle
+        } else if (memPct > 0.65) {
+          await new Promise(r => setTimeout(r, 5000));  // 5s — moderate
+        }
         if (getSitemapFromDisk(loc)) { warmed++; continue; }
         const xml = await selfFetch(loc);
         if (xml && xml.length > 50) { saveSitemapToDisk(loc, xml); warmed++; }
+        await new Promise(r => setTimeout(r, 2000));
       }
       console.log(`[sitemap-cache] Warmed ${warmed} sitemaps to disk`);
     } catch (err) {
@@ -272,7 +288,11 @@ export const onRequest = defineMiddleware(async (context, next) => {
           const ttl = ct.includes('xml') ? 86400 : getEdgeTtl(path);
           const body = await response.text();
           const cc = `public, max-age=300, s-maxage=${ttl}`;
-          if (isSitemapPath(path) && body.length > 50) saveSitemapToDisk(path, body);
+          // Sitemaps: disk-only (don't consume LRU memory — preserves page cache)
+          if (isSitemapPath(path) && body.length > 50) {
+            saveSitemapToDisk(path, body);
+            return new Response(body, { headers: { 'Content-Type': ct, 'Cache-Control': cc, 'X-Cache': 'MISS' } });
+          }
           setCache(cacheKey, body, ct, cc);
           return new Response(body, {
             headers: { 'Content-Type': ct, 'Cache-Control': cc, 'X-Cache': 'MISS' },
