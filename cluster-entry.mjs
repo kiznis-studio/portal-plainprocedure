@@ -18,6 +18,7 @@
 
 import cluster from 'node:cluster';
 import http from 'node:http';
+import { writeFileSync } from 'node:fs';
 import { gzipSync, gunzipSync } from 'node:zlib';
 
 const MIN_WORKERS = 1;
@@ -120,6 +121,13 @@ if (cluster.isPrimary) {
     }
   }
 
+  // ─── Crash throttle — prevent rapid-fire restarts under memory pressure ───
+  const recentCrashes = [];
+  const CRASH_WINDOW = 60_000;  // 60s sliding window
+  const MAX_CRASHES = 5;        // max crashes before backing off
+  const BACKOFF_MS = 30_000;    // 30s cooldown before next restart attempt
+  let backoffTimer = null;
+
   console.log(`[cluster] Primary ${process.pid} starting ${targetWorkers} workers`);
   for (let i = 0; i < targetWorkers; i++) {
     forkWorker(i === 0);
@@ -134,9 +142,32 @@ if (cluster.isPrimary) {
       console.log(`[cluster] Worker ${worker.process.pid} shut down gracefully`);
       return;
     }
-    console.warn(`[cluster] Worker ${worker.process.pid} crashed (${signal || code}), restarting`);
+
+    // Track crash frequency
+    const now = Date.now();
+    recentCrashes.push(now);
+    while (recentCrashes.length > 0 && now - recentCrashes[0] > CRASH_WINDOW) {
+      recentCrashes.shift();
+    }
+
+    const reason = signal || `code ${code}`;
+    if (recentCrashes.length >= MAX_CRASHES) {
+      console.warn(`[cluster] Worker ${worker.process.pid} crashed (${reason}) — ${recentCrashes.length} crashes in 60s, backing off ${BACKOFF_MS / 1000}s`);
+      if (!backoffTimer) {
+        backoffTimer = setTimeout(() => {
+          backoffTimer = null;
+          if (Object.keys(cluster.workers).length < targetWorkers) {
+            console.log(`[cluster] Backoff expired, restarting worker`);
+            forkWorker(false);
+          }
+        }, BACKOFF_MS);
+      }
+      return;
+    }
+
+    console.warn(`[cluster] Worker ${worker.process.pid} crashed (${reason}), restarting`);
     if (Object.keys(cluster.workers).length < targetWorkers) {
-      const w = forkWorker(false);
+      forkWorker(false);
     }
   });
 
@@ -204,8 +235,19 @@ if (cluster.isPrimary) {
   http.createServer((req, res) => {
     const path = req.url.split('?')[0];
 
-    // Always proxy: health, static assets, cluster mgmt, non-GET
-    if (path === '/health' || path.startsWith('/_') || path.startsWith('/fav')) {
+    // Health: primary answers directly when no workers (keeps Docker healthcheck alive)
+    if (path === '/health') {
+      if (workerPorts.length === 0) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ status: 'degraded', workers: 0, cache: responseCache.size }));
+        return;
+      }
+      proxyToWorker(req, res);
+      return;
+    }
+
+    // Always proxy: static assets, cluster mgmt, non-GET
+    if (path.startsWith('/_') || path.startsWith('/fav')) {
       proxyToWorker(req, res);
       return;
     }
@@ -308,6 +350,12 @@ if (cluster.isPrimary) {
 
 } else {
   // ─── Worker process ───
+
+  // Make workers preferred OOM targets so the primary (cache + proxy) survives.
+  // Positive values = more likely to be killed. Default is 0, max 1000.
+  // Writing positive values works without CAP_SYS_RESOURCE.
+  try { writeFileSync('/proc/self/oom_score_adj', '500'); } catch {}
+
   process.on('message', msg => {
     if (msg === 'graceful-shutdown') {
       console.log(`[cluster] Worker ${process.pid} shutting down gracefully`);
