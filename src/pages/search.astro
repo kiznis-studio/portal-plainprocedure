@@ -1,9 +1,8 @@
 ---
 import Base from '../layouts/Base.astro';
-import type { D1Database } from '../lib/d1-adapter';
 import { searchProcedures, searchHospitals } from '../lib/db';
 
-const db = (Astro.locals as any).runtime?.env?.DB as D1Database;
+const db = Astro.locals.runtime.env.DB;
 const query = Astro.url.searchParams.get('q') || '';
 const procedures = query.trim() ? await searchProcedures(db, query.trim(), 30) : [];
 const hospitals = query.trim() ? await searchHospitals(db, query.trim(), 15) : [];

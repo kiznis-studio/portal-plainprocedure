@@ -1,9 +1,8 @@
 ---
 import Base from '../../layouts/Base.astro';
-import type { D1Database } from '../../lib/d1-adapter';
 import { getAllProcedures, getAllCategories } from '../../lib/db';
 
-const db = (Astro.locals as any).runtime?.env?.DB as D1Database;
+const db = Astro.locals.runtime.env.DB;
 const procedures = await getAllProcedures(db);
 const categories = await getAllCategories(db);
 const selectedCat = Astro.url.searchParams.get('category') || '';

@@ -1,11 +1,10 @@
 import type { APIRoute } from 'astro';
-import type { D1Database } from '../../lib/d1-adapter';
 import { searchProcedures, searchHospitals } from '../../lib/db';
 
 export const prerender = false;
 
 export const GET: APIRoute = async ({ locals, url }) => {
-  const db = (locals as any).runtime?.env?.DB as D1Database;
+  const db = locals.runtime.env.DB;
   const query = url.searchParams.get('q') || '';
 
   if (!query.trim()) {

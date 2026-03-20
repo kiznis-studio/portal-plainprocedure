@@ -1,5 +1,4 @@
 import type { APIRoute } from 'astro';
-import type { D1Database } from '../lib/d1-adapter';
 import { getAllCategorySlugs } from '../lib/db';
 
 export const prerender = false;
@@ -7,7 +6,7 @@ export const prerender = false;
 const siteUrl = 'https://plainprocedure.com';
 
 export const GET: APIRoute = async ({ locals }) => {
-  const db = (locals as any).runtime?.env?.DB as D1Database;
+  const db = locals.runtime.env.DB;
   const slugs = await getAllCategorySlugs(db);
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>

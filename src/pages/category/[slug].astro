@@ -1,9 +1,8 @@
 ---
 import Base from '../../layouts/Base.astro';
-import type { D1Database } from '../../lib/d1-adapter';
 import { getCategoryBySlug, getProceduresByCategory } from '../../lib/db';
 
-const db = (Astro.locals as any).runtime?.env?.DB as D1Database;
+const db = Astro.locals.runtime.env.DB;
 const { slug } = Astro.params;
 const category = await getCategoryBySlug(db, slug!);
 if (!category) return Astro.redirect('/404');
