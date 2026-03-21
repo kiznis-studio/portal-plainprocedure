@@ -105,7 +105,7 @@ function startBackgroundWarming(): void {
   if (!database) { cacheWarmed = true; return; }
   (async () => {
     try {
-      await warmQueryCache(database, WARM_BATCH, WARM_PAUSE);
+      await warmQueryCache(database);
       cacheWarmedAt = new Date().toISOString();
     } catch (err) {
       console.error('[cache] Warming failed:', err);
