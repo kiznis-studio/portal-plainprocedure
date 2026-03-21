@@ -1,0 +1,403 @@
+---
+export const prerender = false;
+
+import Base from '../../layouts/Base.astro';
+import AdSlot from '../../components/ads/AdSlot.astro';
+import {
+  getAllProcedures,
+  getAllStates,
+  getProcedureBySlug,
+  getProcedureStatePrice,
+  getProcedureStatePrices,
+  getStateByAbbr,
+} from '../../lib/db';
+
+const db = Astro.locals.runtime.env.DB;
+
+const procSlug = Astro.url.searchParams.get('procedure') || '';
+const stateAbbr = (Astro.url.searchParams.get('state') || '').toUpperCase();
+
+const [allProcedures, allStates] = await Promise.all([
+  getAllProcedures(db),
+  getAllStates(db),
+]);
+
+let procedure: Awaited<ReturnType<typeof getProcedureBySlug>> = null;
+let statePrice: Awaited<ReturnType<typeof getProcedureStatePrice>> = null;
+let allStatePrices: Awaited<ReturnType<typeof getProcedureStatePrices>> = [];
+let state: Awaited<ReturnType<typeof getStateByAbbr>> = null;
+let result: Record<string, any> | null = null;
+
+if (procSlug) {
+  procedure = await getProcedureBySlug(db, procSlug);
+  if (procedure) {
+    allStatePrices = await getProcedureStatePrices(db, procedure.code);
+    if (stateAbbr) {
+      [statePrice, state] = await Promise.all([
+        getProcedureStatePrice(db, procedure.code, stateAbbr),
+        getStateByAbbr(db, stateAbbr),
+      ]);
+    }
+
+    // Build result
+    const natAvg = procedure.national_avg_medicare_payment;
+    const natSubmitted = procedure.national_avg_submitted_charge;
+    const priceLow = procedure.price_range_low;
+    const priceHigh = procedure.price_range_high;
+    const totalServices = procedure.national_total_services;
+
+    // State-level data
+    const stateAvg = statePrice?.avg_medicare_payment ?? null;
+    const stateSubmitted = statePrice?.avg_submitted_charge ?? null;
+    const stateMin = statePrice?.min_payment ?? null;
+    const stateMax = statePrice?.max_payment ?? null;
+    const stateProviders = statePrice?.provider_count ?? null;
+
+    // Comparison: state vs national
+    let vsNational: number | null = null;
+    if (stateAvg != null && natAvg != null && natAvg > 0) {
+      vsNational = Math.round(((stateAvg - natAvg) / natAvg) * 100);
+    }
+
+    // Rank among states
+    let stateRank: number | null = null;
+    if (stateAbbr && allStatePrices.length > 0) {
+      const sorted = [...allStatePrices].sort((a, b) => (b.avg_medicare_payment ?? 0) - (a.avg_medicare_payment ?? 0));
+      const idx = sorted.findIndex(s => s.state === stateAbbr);
+      if (idx >= 0) stateRank = idx + 1;
+    }
+
+    // Cheapest / most expensive states
+    const cheapestState = allStatePrices.length > 0
+      ? allStatePrices.reduce((min, s) => (s.avg_medicare_payment ?? Infinity) < (min.avg_medicare_payment ?? Infinity) ? s : min)
+      : null;
+    const expensiveState = allStatePrices.length > 0
+      ? allStatePrices.reduce((max, s) => (s.avg_medicare_payment ?? 0) > (max.avg_medicare_payment ?? 0) ? s : max)
+      : null;
+
+    result = {
+      natAvg,
+      natSubmitted,
+      priceLow,
+      priceHigh,
+      totalServices,
+      stateAvg,
+      stateSubmitted,
+      stateMin,
+      stateMax,
+      stateProviders,
+      vsNational,
+      stateRank,
+      totalStates: allStatePrices.length,
+      cheapestState,
+      expensiveState,
+    };
+  }
+}
+
+function fmt(n: number | null | undefined): string {
+  if (n == null) return '\u2014';
+  return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function fmtInt(n: number | null | undefined): string {
+  if (n == null) return '\u2014';
+  return n.toLocaleString('en-US');
+}
+function titleCase(s: string): string {
+  return s.toLowerCase().replace(/(?:^|\s|-)\S/g, c => c.toUpperCase());
+}
+
+const procName = procedure ? titleCase(procedure.description) : '';
+const stateName = state?.name || stateAbbr || '';
+
+const title = result && procedure
+  ? `${procName} Cost${stateName ? ' in ' + stateName : ''}: ${fmt(result.stateAvg ?? result.natAvg)} Medicare Average | Cost Estimator`
+  : 'Procedure Cost Estimator \u2014 Medicare Pricing by State | PlainProcedure';
+const description = result && procedure
+  ? `Estimated Medicare cost for ${procName}${stateName ? ' in ' + stateName : ''}: ${fmt(result.stateAvg ?? result.natAvg)} average payment. National range: ${fmt(result.priceLow)}\u2013${fmt(result.priceHigh)}. Based on ${fmtInt(result.totalServices)} services. Medicare Physician Utilization 2023.`
+  : 'Estimate the cost of 9,297 medical procedures by state. Compare Medicare average payments, hospital price ranges, and state-by-state variation. Medicare Physician Utilization 2023 data.';
+
+const faqItems = [
+  { q: 'How are procedure costs estimated?', a: 'Costs are based on actual Medicare Physician Utilization data from CMS (2023). The Medicare average payment reflects what Medicare actually paid providers. Submitted charges are the amounts billed by providers before Medicare adjustments.' },
+  { q: 'Why does the same procedure cost different amounts in different states?', a: 'Medicare payment rates vary by geographic region due to differences in local cost of living, practice expenses, and malpractice insurance costs. States with higher costs of living generally have higher Medicare reimbursement rates.' },
+  { q: 'What is the difference between Medicare payment and submitted charge?', a: 'The submitted charge is what providers bill (the "sticker price"). The Medicare payment is what Medicare actually pays after applying fee schedules and adjustments. The submitted charge is typically 2\u20134x higher than the Medicare payment. Patients with private insurance may pay amounts closer to the submitted charge.' },
+  { q: 'Are these the out-of-pocket costs I will pay?', a: 'No. These are Medicare reimbursement amounts. Your actual cost depends on your insurance plan, deductible, copay, and whether the provider is in-network. Uninsured patients may face the full submitted charge, while Medicare beneficiaries typically pay 20% coinsurance after meeting their deductible.' },
+  ...(result && procedure && stateName ? [{
+    q: `How much does ${procName} cost in ${stateName}?`,
+    a: `In ${stateName}, the average Medicare payment for ${procName} is ${fmt(result.stateAvg)}. The statewide submitted charge averages ${fmt(result.stateSubmitted)}. ${result.vsNational !== null ? (result.vsNational > 0 ? `This is ${result.vsNational}% above the national average of ${fmt(result.natAvg)}.` : result.vsNational < 0 ? `This is ${Math.abs(result.vsNational)}% below the national average of ${fmt(result.natAvg)}.` : `This matches the national average of ${fmt(result.natAvg)}.`) : ''}`,
+  }] : []),
+];
+const faqSchema = JSON.stringify({
+  '@context': 'https://schema.org',
+  '@type': 'FAQPage',
+  mainEntity: faqItems.map(f => ({ '@type': 'Question', name: f.q, acceptedAnswer: { '@type': 'Answer', text: f.a } })),
+});
+---
+
+<Base
+  title={title}
+  description={description}
+  breadcrumbs={[
+    { name: 'Home', href: '/' },
+    { name: 'Cost Estimator' },
+  ]}
+>
+  <section class="mx-auto max-w-4xl px-4 py-8 md:py-12">
+    <h1 class="text-3xl font-bold text-[var(--color-foreground)] mb-2">Procedure Cost Estimator</h1>
+    <p class="text-[var(--color-muted)] mb-8">
+      Estimate the cost of 9,297 medical procedures by state. Compare Medicare payments, hospital charges, and state variation. Data from CMS Medicare Physician Utilization 2023.
+    </p>
+
+    <!-- Input Form -->
+    <div class="card p-6 mb-8">
+      <form method="get" action="/tools/cost-estimator">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label for="procedure" class="block text-sm font-medium text-[var(--color-foreground)] mb-1">Procedure *</label>
+            <select id="procedure" name="procedure" required class="input w-full">
+              <option value="">Select a procedure...</option>
+              {allProcedures.slice(0, 500).map(p => (
+                <option value={p.slug} selected={p.slug === procSlug}>
+                  {titleCase(p.description)} ({p.code})
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label for="state" class="block text-sm font-medium text-[var(--color-foreground)] mb-1">State (optional)</label>
+            <select id="state" name="state" class="input w-full">
+              <option value="">National average</option>
+              {allStates.map(s => (
+                <option value={s.abbr} selected={s.abbr === stateAbbr}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <div class="mt-4">
+          <button type="submit" class="btn btn-primary px-6">Estimate Cost</button>
+        </div>
+      </form>
+    </div>
+
+    <AdSlot position="mid" />
+
+    <!-- Results -->
+    {result && procedure ? (
+      <div class="space-y-6">
+        <!-- Procedure Header -->
+        <div class="card p-6">
+          <h2 class="text-xl font-bold text-[var(--color-foreground)]">{procName}</h2>
+          <p class="text-sm text-[var(--color-muted)]">
+            CPT Code: {procedure.code} &middot; {procedure.category}
+            {stateName && <> &middot; {stateName}</>}
+          </p>
+        </div>
+
+        <!-- Cost Summary Cards -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div class="card p-5 text-center">
+            <div class="text-2xl font-bold text-teal-600 dark:text-teal-400">
+              {fmt(result.stateAvg ?? result.natAvg)}
+            </div>
+            <div class="text-xs text-[var(--color-muted)] mt-1">
+              {stateAbbr ? 'State Medicare Avg' : 'National Medicare Avg'}
+            </div>
+          </div>
+          <div class="card p-5 text-center">
+            <div class="text-2xl font-bold text-[var(--color-foreground)]">
+              {fmt(result.stateSubmitted ?? result.natSubmitted)}
+            </div>
+            <div class="text-xs text-[var(--color-muted)] mt-1">
+              {stateAbbr ? 'State Submitted Charge' : 'National Submitted Charge'}
+            </div>
+          </div>
+          <div class="card p-5 text-center">
+            <div class="text-2xl font-bold text-[var(--color-foreground)]">
+              {fmt(result.priceLow)}
+            </div>
+            <div class="text-xs text-[var(--color-muted)] mt-1">National Price Low</div>
+          </div>
+          <div class="card p-5 text-center">
+            <div class="text-2xl font-bold text-[var(--color-foreground)]">
+              {fmt(result.priceHigh)}
+            </div>
+            <div class="text-xs text-[var(--color-muted)] mt-1">National Price High</div>
+          </div>
+        </div>
+
+        <!-- State vs National Comparison -->
+        {stateAbbr && result.vsNational !== null && (
+          <div class="card p-6">
+            <h3 class="text-lg font-bold text-[var(--color-foreground)] mb-4">{stateName} vs National Average</h3>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div class="text-center">
+                <div class={`text-3xl font-bold ${result.vsNational > 0 ? 'text-amber-600 dark:text-amber-400' : result.vsNational < 0 ? 'text-teal-600 dark:text-teal-400' : 'text-[var(--color-foreground)]'}`}>
+                  {result.vsNational > 0 ? '+' : ''}{result.vsNational}%
+                </div>
+                <div class="text-xs text-[var(--color-muted)] mt-1">vs National Average</div>
+              </div>
+              <div class="text-center">
+                <div class="text-3xl font-bold text-[var(--color-foreground)]">
+                  #{result.stateRank}
+                </div>
+                <div class="text-xs text-[var(--color-muted)] mt-1">of {result.totalStates} States</div>
+              </div>
+              <div class="text-center">
+                <div class="text-3xl font-bold text-[var(--color-foreground)]">
+                  {fmtInt(result.stateProviders)}
+                </div>
+                <div class="text-xs text-[var(--color-muted)] mt-1">Providers in State</div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <!-- Cost Breakdown Table -->
+        <div class="card p-6">
+          <h3 class="text-lg font-bold text-[var(--color-foreground)] mb-4">Cost Breakdown</h3>
+          <div class="divide-y divide-[var(--color-border)]">
+            <div class="flex justify-between py-3">
+              <span class="text-[var(--color-muted)]">Medicare Average Payment {stateAbbr ? `(${stateName})` : '(National)'}</span>
+              <span class="font-medium text-[var(--color-foreground)]">{fmt(result.stateAvg ?? result.natAvg)}</span>
+            </div>
+            <div class="flex justify-between py-3">
+              <span class="text-[var(--color-muted)]">Average Submitted Charge {stateAbbr ? `(${stateName})` : '(National)'}</span>
+              <span class="font-medium text-[var(--color-foreground)]">{fmt(result.stateSubmitted ?? result.natSubmitted)}</span>
+            </div>
+            {stateAbbr && result.stateMin != null && (
+              <div class="flex justify-between py-3">
+                <span class="text-[var(--color-muted)]">Lowest Payment in {stateName}</span>
+                <span class="font-medium text-teal-600 dark:text-teal-400">{fmt(result.stateMin)}</span>
+              </div>
+            )}
+            {stateAbbr && result.stateMax != null && (
+              <div class="flex justify-between py-3">
+                <span class="text-[var(--color-muted)]">Highest Payment in {stateName}</span>
+                <span class="font-medium text-amber-600 dark:text-amber-400">{fmt(result.stateMax)}</span>
+              </div>
+            )}
+            <div class="flex justify-between py-3">
+              <span class="text-[var(--color-muted)]">National Price Range</span>
+              <span class="font-medium text-[var(--color-foreground)]">{fmt(result.priceLow)} &ndash; {fmt(result.priceHigh)}</span>
+            </div>
+            <div class="flex justify-between py-3">
+              <span class="text-[var(--color-muted)]">Total Medicare Services (National)</span>
+              <span class="font-medium text-[var(--color-foreground)]">{fmtInt(result.totalServices)}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Cheapest / Most Expensive States -->
+        {allStatePrices.length > 1 && (
+          <div class="card p-6">
+            <h3 class="text-lg font-bold text-[var(--color-foreground)] mb-4">State Price Comparison</h3>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {result.cheapestState && (
+                <div class="rounded-lg bg-teal-50 dark:bg-teal-950/20 border border-teal-200 dark:border-teal-800 p-4">
+                  <div class="text-xs text-teal-700 dark:text-teal-400 font-medium uppercase tracking-wide mb-1">Least Expensive State</div>
+                  <div class="text-lg font-bold text-[var(--color-foreground)]">{result.cheapestState.state_name}</div>
+                  <div class="text-sm text-teal-600 dark:text-teal-400">{fmt(result.cheapestState.avg_medicare_payment)}</div>
+                </div>
+              )}
+              {result.expensiveState && (
+                <div class="rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 p-4">
+                  <div class="text-xs text-amber-700 dark:text-amber-400 font-medium uppercase tracking-wide mb-1">Most Expensive State</div>
+                  <div class="text-lg font-bold text-[var(--color-foreground)]">{result.expensiveState.state_name}</div>
+                  <div class="text-sm text-amber-600 dark:text-amber-400">{fmt(result.expensiveState.avg_medicare_payment)}</div>
+                </div>
+              )}
+            </div>
+            {allStatePrices.length > 4 && (
+              <div class="mt-4 overflow-x-auto">
+                <table class="w-full text-sm">
+                  <thead>
+                    <tr class="border-b border-[var(--color-border)] text-left">
+                      <th class="py-2 pr-4 font-semibold text-[var(--color-foreground)]">#</th>
+                      <th class="py-2 pr-4 font-semibold text-[var(--color-foreground)]">State</th>
+                      <th class="py-2 pr-4 font-semibold text-right text-[var(--color-foreground)]">Medicare Avg</th>
+                      <th class="py-2 font-semibold text-right text-[var(--color-foreground)]">Submitted Charge</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {allStatePrices.slice(0, 10).map((sp, i) => (
+                      <tr class:list={['border-b border-[var(--color-border)]', sp.state === stateAbbr && 'bg-[var(--color-accent)]/5']}>
+                        <td class="py-2 pr-4 text-[var(--color-muted)]">{i + 1}</td>
+                        <td class="py-2 pr-4">
+                          <a href={`/state/${sp.state.toLowerCase()}`} class="text-[var(--color-accent)] hover:underline">{sp.state_name}</a>
+                        </td>
+                        <td class="py-2 pr-4 text-right font-medium">{fmt(sp.avg_medicare_payment)}</td>
+                        <td class="py-2 text-right text-[var(--color-muted)]">{fmt(sp.avg_submitted_charge)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {allStatePrices.length > 10 && (
+                  <p class="text-xs text-[var(--color-muted)] mt-2">Showing top 10 of {allStatePrices.length} states. <a href={`/procedure/${procedure.slug}`} class="text-[var(--color-accent)] hover:underline">View full state breakdown &rarr;</a></p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        <!-- Link to Full Detail -->
+        <div class="flex flex-wrap gap-3">
+          <a href={`/procedure/${procedure.slug}`} class="btn btn-primary px-4 py-2 text-sm">
+            View full procedure details &rarr;
+          </a>
+          {stateAbbr && (
+            <a href={`/state/${stateAbbr.toLowerCase()}`} class="btn px-4 py-2 text-sm border border-[var(--color-border)]">
+              View all procedures in {stateName} &rarr;
+            </a>
+          )}
+        </div>
+
+        <!-- Disclaimer -->
+        <div class="rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 p-4 text-sm text-amber-800 dark:text-amber-300">
+          <strong>Disclaimer:</strong> These estimates are based on Medicare Physician Utilization data and reflect Medicare reimbursement rates. Your actual costs may differ significantly based on your insurance plan, provider, facility type, and geographic location. This tool is for informational purposes only and should not be used as a substitute for obtaining actual cost estimates from your healthcare provider or insurance company.
+        </div>
+      </div>
+    ) : procSlug && !procedure ? (
+      <div class="rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 p-6">
+        <p class="font-medium text-amber-800 dark:text-amber-300">Procedure not found</p>
+        <p class="text-sm text-amber-700 dark:text-amber-400 mt-1">
+          The selected procedure was not found in the database. Please try a different procedure from the dropdown above or <a href="/search" class="underline">search our database</a>.
+        </p>
+      </div>
+    ) : null}
+
+    <!-- FAQ -->
+    <section class="mt-12">
+      <h2 class="text-xl font-bold text-[var(--color-foreground)] mb-4">Frequently Asked Questions</h2>
+      <div class="space-y-3">
+        {faqItems.map(faq => (
+          <details class="card group">
+            <summary class="px-5 py-4 cursor-pointer font-medium text-[var(--color-foreground)] list-none flex items-center justify-between">
+              <span>{faq.q}</span>
+              <span class="ml-2 text-[var(--color-muted)] group-open:rotate-180 transition-transform">&#9660;</span>
+            </summary>
+            <div class="px-5 pb-4 text-sm text-[var(--color-muted)] leading-relaxed">{faq.a}</div>
+          </details>
+        ))}
+      </div>
+    </section>
+
+    <div class="mt-8 text-sm text-[var(--color-muted)]">
+      <strong>Data Source:</strong> Centers for Medicare &amp; Medicaid Services (CMS), Medicare Physician &amp; Other Practitioners Utilization &amp; Payment Data, Calendar Year 2023.
+    </div>
+  </section>
+
+  <script type="application/ld+json" set:html={faqSchema} />
+  <script type="application/ld+json" set:html={JSON.stringify({
+    '@context': 'https://schema.org',
+    '@type': 'SoftwareApplication',
+    name: 'Procedure Cost Estimator',
+    applicationCategory: 'HealthApplication',
+    operatingSystem: 'Web',
+    description: 'Estimate the cost of medical procedures by state using Medicare data. Compare provider charges, Medicare payments, and state-by-state pricing variation.',
+    url: 'https://plainprocedure.com/tools/cost-estimator',
+    creator: { '@type': 'Organization', name: 'PlainProcedure' },
+    offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+  })} />
+</Base>
