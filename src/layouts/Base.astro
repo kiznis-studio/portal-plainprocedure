@@ -22,7 +22,7 @@ interface Props {
 const props = Astro.props;
 const siteName = "PlainProcedure";
 const siteUrl = 'https://plainprocedure.com';
-const fullTitle = props.title === siteName ? props.title : `${props.title} | ${siteName}`;
+const fullTitle = props.title.startsWith(siteName) ? props.title : `${props.title} | ${siteName}`;
 const canonicalUrl = new URL(Astro.url.pathname, siteUrl).href;
 
 const breadcrumbSchema = (() => {
