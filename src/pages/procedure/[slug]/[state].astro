@@ -1,6 +1,6 @@
 ---
 import Base from '../../../layouts/Base.astro';
-import { getProcedureBySlug, getProcedureStatePrice, getStateByAbbr, getProcedureStateProviders } from '../../../lib/db';
+import { getProcedureBySlug, getProcedureStatePrice, getStateByAbbr, getProcedureStateProviders, getProcedurePricing, getStateProcedurePricingSingle, getProviderProcedurePricingByState } from '../../../lib/db';
 
 const db = Astro.locals.runtime.env.DB;
 const { slug, state: stateParam } = Astro.params;
@@ -16,6 +16,16 @@ const statePrice = await getProcedureStatePrice(db, procedure.code, stateAbbr);
 if (!statePrice) return Astro.redirect('/404');
 
 const providers = await getProcedureStateProviders(db, procedure.code, stateAbbr, 25);
+
+const pricing = await getProcedurePricing(db, procedure.code);
+const statePricing = await getStateProcedurePricingSingle(db, procedure.code, stateAbbr);
+const providerPricingMap = new Map<string, { est_commercial: number | null; est_cash: number | null }>();
+if (statePricing) {
+  const provPricing = await getProviderProcedurePricingByState(db, procedure.code, stateAbbr, 25);
+  for (const pp of provPricing) {
+    providerPricingMap.set(pp.npi, { est_commercial: pp.est_commercial, est_cash: pp.est_cash });
+  }
+}
 
 function fmt(n: number | null): string {
   if (n == null) return 'N/A';
@@ -90,6 +100,36 @@ const isAbove = diff != null && diff > 0;
         </div>
       </div>
 
+      {/* Estimated Prices */}
+      {statePricing && statePricing.est_commercial_avg && (
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+          {(() => {
+            const natCommercial = pricing?.est_commercial_avg;
+            const stateCommercial = statePricing.est_commercial_avg;
+            const commAbove = natCommercial && stateCommercial ? stateCommercial > natCommercial : false;
+            return (
+              <div class="card">
+                <div class="text-sm text-[var(--color-muted)] mb-1">Est. Commercial ({stateInfo.abbr})</div>
+                <div class={`text-3xl font-bold ${commAbove ? 'text-amber-600 dark:text-amber-400' : 'text-teal-600 dark:text-teal-400'}`}>
+                  {fmt(stateCommercial)}
+                </div>
+                <div class="text-xs text-[var(--color-muted)] mt-1">
+                  {natCommercial ? `National avg: ${fmt(natCommercial)}` : 'Estimated commercial rate'}
+                </div>
+              </div>
+            );
+          })()}
+          <div class="card">
+            <div class="text-sm text-[var(--color-muted)] mb-1">Est. Cash / Self-Pay ({stateInfo.abbr})</div>
+            <div class="text-3xl font-bold text-emerald-600 dark:text-emerald-400">{fmt(statePricing.est_cash_price)}</div>
+            <div class="text-xs text-[var(--color-muted)] mt-1">Typical self-pay discount</div>
+          </div>
+        </div>
+      )}
+      {statePricing && statePricing.est_commercial_avg && (
+        <p class="text-sm text-gray-500 dark:text-gray-400 mb-8">Estimated using RAND 2024 commercial-to-Medicare ratios. Actual prices vary by insurer, plan, and facility.</p>
+      )}
+
       <!-- Stats -->
       <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         <div class="card text-center py-3">
@@ -123,6 +163,8 @@ const isAbove = diff != null && diff > 0;
                   <th class="text-left py-3 px-2 font-semibold hidden md:table-cell">Specialty</th>
                   <th class="text-right py-3 px-2 font-semibold">Medicare</th>
                   <th class="text-right py-3 px-2 font-semibold hidden sm:table-cell">Billed</th>
+                  <th class="text-right py-3 px-2 font-semibold hidden md:table-cell">Est. Commercial</th>
+                  <th class="text-right py-3 px-2 font-semibold hidden md:table-cell">Est. Cash</th>
                   <th class="text-right py-3 px-2 font-semibold">Services</th>
                 </tr>
               </thead>
@@ -137,6 +179,15 @@ const isAbove = diff != null && diff > 0;
                     <td class="py-2 px-2 hidden md:table-cell text-[var(--color-muted)] text-xs">{pv.provider_type}</td>
                     <td class="py-2 px-2 text-right text-teal-600 dark:text-teal-400">{fmt(pv.avg_medicare_payment)}</td>
                     <td class="py-2 px-2 text-right hidden sm:table-cell text-amber-600 dark:text-amber-400">{fmt(pv.avg_submitted_charge)}</td>
+                    {(() => {
+                      const pp = providerPricingMap.get(pv.npi);
+                      return (
+                        <>
+                          <td class="py-2 px-2 text-right hidden md:table-cell text-blue-600 dark:text-blue-400">{pp ? fmt(pp.est_commercial) : 'N/A'}</td>
+                          <td class="py-2 px-2 text-right hidden md:table-cell text-emerald-600 dark:text-emerald-400">{pp ? fmt(pp.est_cash) : 'N/A'}</td>
+                        </>
+                      );
+                    })()}
                     <td class="py-2 px-2 text-right text-[var(--color-muted)]">{fmtCompact(pv.total_services)}</td>
                   </tr>
                 ))}
