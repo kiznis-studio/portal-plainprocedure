@@ -19,7 +19,7 @@
 import cluster from 'node:cluster';
 import http from 'node:http';
 import { fork } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { gzipSync, gunzipSync } from 'node:zlib';
 
 const MIN_WORKERS = 1;
@@ -393,26 +393,47 @@ if (cluster.isPrimary) {
 
     // /ping: comprehensive external health check (for Kuma monitoring)
     if (path === '/ping') {
+      const dbPath = process.env.DATABASE_PATH || '/data/portal.db';
       const checks = {
         workers: workerPorts.length > 0 ? 'ok' : 'no_workers',
-        cache: responseCache.size > 0 ? `ok (${responseCache.size} entries)` : 'cold',
-        queryCache: sharedQueryCache.size > 0 ? `ok (${sharedQueryCache.size} entries)` : 'cold',
+        workerCount: Object.keys(cluster.workers).length,
+        cache: `${responseCache.size} entries`,
+        queryCache: `${sharedQueryCache.size} entries`,
         warmer: warmerProcess && !warmerProcess.killed ? 'running' : (warmerDone ? 'done' : 'idle'),
       };
 
+      // DB check — file exists, readable, size
+      try {
+        if (existsSync(dbPath)) {
+          const dbStat = statSync(dbPath);
+          checks.db = `ok (${Math.round(dbStat.size / 1048576)}MB)`;
+        } else {
+          checks.db = 'missing';
+        }
+      } catch (e) { checks.db = `error (${e.message})`; }
+
+      // Memory check — cgroup v2
       try {
         const max = parseInt(readFileSync('/sys/fs/cgroup/memory.max', 'utf-8').trim());
         const cur = parseInt(readFileSync('/sys/fs/cgroup/memory.current', 'utf-8').trim());
         const pct = Math.round(cur / max * 100);
-        checks.memory = pct < 90 ? `ok (${pct}% of ${Math.round(max / 1048576)}MB)` : `warning (${pct}%)`;
-      } catch { checks.memory = 'unknown'; }
+        checks.memory = `${pct}% of ${Math.round(max / 1048576)}MB`;
+        checks.memoryOk = pct < 90;
+      } catch { checks.memory = 'unknown'; checks.memoryOk = true; }
 
-      const allOk = checks.workers === 'ok' && !String(checks.memory).startsWith('warning');
+      // Cache hit rate
+      const cacheTotal = totalHits + totalMisses;
+      if (cacheTotal > 0) {
+        checks.cacheHitRate = `${Math.round(totalHits / cacheTotal * 100)}%`;
+      }
+
+      const allOk = checks.workers === 'ok' && checks.memoryOk !== false && !String(checks.db).startsWith('error') && checks.db !== 'missing';
       const status = allOk ? 'healthy' : 'degraded';
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
         status,
+        portal: process.env.PORTAL_NAME || 'unknown',
         checks,
         uptime: Math.round(process.uptime()),
         timestamp: new Date().toISOString(),
