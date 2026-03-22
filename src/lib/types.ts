@@ -134,3 +134,33 @@ export interface HospitalProcedure {
   avg_medicare_payment: number;
   avg_submitted_charge: number;
 }
+
+export interface ProcedurePricing {
+  code: string;
+  est_commercial_low: number | null;
+  est_commercial_avg: number | null;
+  est_commercial_high: number | null;
+  est_cash_price: number | null;
+  markup_ratio: number | null;
+  commercial_to_medicare: number | null;
+  methodology: string;
+}
+
+export interface StateProcedurePricingRow {
+  procedure_code: string;
+  state: string;
+  est_commercial_avg: number | null;
+  est_cash_price: number | null;
+  commercial_ratio: number | null;
+}
+
+export interface ProviderProcedurePricingRow {
+  npi: string;
+  provider_name: string | null;
+  state: string | null;
+  city: string | null;
+  procedure_code: string;
+  est_commercial: number | null;
+  est_cash: number | null;
+  total_services: number | null;
+}

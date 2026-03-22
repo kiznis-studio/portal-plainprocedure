@@ -9,6 +9,9 @@ import type {
   Provider,
   ProviderProcedureWithDetails,
   Stat,
+  ProcedurePricing,
+  StateProcedurePricingRow,
+  ProviderProcedurePricingRow,
 } from './types';
 import { persistToDisk, loadFromDisk, warmFromDisk } from './disk-cache';
 
@@ -251,6 +254,41 @@ export async function searchHospitals(db: D1Database, query: string, limit: numb
      ORDER BY name COLLATE NOCASE
      LIMIT ?3`
   ).bind(q, q, limit).all<Hospital>();
+  return r.results;
+}
+
+// --- Enriched Pricing ---
+export async function getProcedurePricing(db: D1Database, code: string): Promise<ProcedurePricing | null> {
+  const r = await db.prepare(
+    `SELECT code, est_commercial_low, est_commercial_avg, est_commercial_high,
+            est_cash_price, markup_ratio, commercial_to_medicare, methodology
+     FROM procedure_pricing WHERE code = ?1`
+  ).bind(code).first<ProcedurePricing>();
+  return r;
+}
+
+export async function getStateProcedurePricingAll(db: D1Database, procedureCode: string): Promise<StateProcedurePricingRow[]> {
+  const r = await db.prepare(
+    `SELECT procedure_code, state, est_commercial_avg, est_cash_price, commercial_ratio
+     FROM state_procedure_pricing WHERE procedure_code = ?1 ORDER BY state`
+  ).bind(procedureCode).all<StateProcedurePricingRow>();
+  return r.results;
+}
+
+export async function getStateProcedurePricingSingle(db: D1Database, procedureCode: string, state: string): Promise<StateProcedurePricingRow | null> {
+  const r = await db.prepare(
+    `SELECT procedure_code, state, est_commercial_avg, est_cash_price, commercial_ratio
+     FROM state_procedure_pricing WHERE procedure_code = ?1 AND state = ?2`
+  ).bind(procedureCode, state).first<StateProcedurePricingRow>();
+  return r;
+}
+
+export async function getProviderProcedurePricingByState(db: D1Database, procedureCode: string, state: string, limit: number = 25): Promise<ProviderProcedurePricingRow[]> {
+  const r = await db.prepare(
+    `SELECT npi, provider_name, state, city, procedure_code, est_commercial, est_cash, total_services
+     FROM provider_procedure_pricing WHERE procedure_code = ?1 AND state = ?2
+     ORDER BY total_services DESC LIMIT ?3`
+  ).bind(procedureCode, state, limit).all<ProviderProcedurePricingRow>();
   return r.results;
 }
 
