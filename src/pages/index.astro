@@ -289,4 +289,17 @@ const siteDescription = "Healthcare procedure costs in plain English. Compare Me
       </div>
     </div>
   </section>
+
+  {/* JSON-LD: WebSite + SearchAction */}
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    "name": siteName,
+    "url": import.meta.env.SITE,
+    "potentialAction": {
+      "@type": "SearchAction",
+      "target": `${import.meta.env.SITE}/?q={search_term_string}`,
+      "query-input": "required name=search_term_string"
+    }
+  })} />
 </Base>
