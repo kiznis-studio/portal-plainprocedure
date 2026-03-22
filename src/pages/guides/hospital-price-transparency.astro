@@ -1,0 +1,159 @@
+---
+export const prerender = false;
+import Base from '../../layouts/Base.astro';
+
+const faqItems = [
+  {
+    q: 'What is the Hospital Price Transparency Rule?',
+    a: 'The Hospital Price Transparency Rule (45 CFR Part 180) took effect January 1, 2021. It requires all hospitals operating in the United States to establish and make public a machine-readable file containing a list of all standard charges for items and services. This includes gross charges, payer-specific negotiated rates, discounted cash prices, and de-identified minimum and maximum rates.'
+  },
+  {
+    q: 'What is a "standard charge" under the rule?',
+    a: 'CMS defines five types of standard charges hospitals must publish: (1) Gross charge — the undiscounted rate in the chargemaster; (2) Discounted cash price — what uninsured patients are charged; (3) Payer-specific negotiated charge — rate negotiated with each insurer and plan; (4) De-identified minimum negotiated charge — lowest rate across all payers; (5) De-identified maximum negotiated charge — highest rate across all payers.'
+  },
+  {
+    q: 'Why aren\'t more hospitals compliant with the rule?',
+    a: 'Early non-compliance was widespread because CMS initially lacked strong enforcement mechanisms and the penalties were low relative to hospital revenues. CMS increased penalties to up to $2 million/year in 2022 and has ramped up monitoring. By 2024, approximately 72% of hospitals were compliant, up from under 30% in 2021-2022. The largest health systems were among the slowest to comply, often citing data complexity and competitive concerns about revealing negotiated rates.'
+  },
+  {
+    q: 'Can I use this data to find the cheapest hospital?',
+    a: 'For planned (elective) procedures, yes — hospital price transparency data is genuinely useful for comparing prices across facilities. However, several caveats apply: not all hospitals are fully compliant; published rates don\'t include physician fees (billed separately); what you actually pay depends on your insurance plan and deductible status; and quality differences between hospitals may outweigh price differences for complex procedures.'
+  },
+  {
+    q: 'Why do hospitals fight price transparency?',
+    a: 'Hospital systems have historically opposed price transparency because their negotiated rates with insurers are trade secrets — revealing them reduces their negotiating leverage for future contracts. Dominant hospital systems can charge more because insurers need to include them in networks; publishing rates would expose this pricing power. Additionally, hospitals benefit from information asymmetry with patients, which reduces competitive pressure to lower prices.'
+  },
+  {
+    q: 'What is the difference between price transparency and cost transparency?',
+    a: 'Price transparency refers to hospitals publishing what they charge. Cost transparency would mean hospitals disclosing what it actually costs them to provide services — a much more sensitive figure that almost no hospital publishes voluntarily. Studies estimate hospitals\' actual costs are 40-60% of Medicare rates, which means even Medicare rates typically include substantial margins. The gap between cost and chargemaster price is enormous.'
+  },
+];
+---
+
+<Base
+  title="Understanding Hospital Price Transparency — PlainProcedure"
+  description="How the Hospital Price Transparency Rule works, what data hospitals must publish, how to find and use machine-readable files, and why price transparency matters for patients."
+  breadcrumbs={[
+    { name: 'Home', href: '/' },
+    { name: 'Guides', href: '/guides/' },
+    { name: 'Understanding Hospital Price Transparency' },
+  ]}
+>
+  <article class="mx-auto max-w-3xl px-4 py-8 md:py-12">
+    <h1 class="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-3">Understanding Hospital Price Transparency</h1>
+    <p class="text-lg text-gray-600 dark:text-gray-400 mb-6">
+      What the Hospital Price Transparency Rule requires, what data hospitals publish, and how patients can use this information to make more informed decisions.
+    </p>
+
+    <div class="p-4 rounded-lg bg-sky-50 dark:bg-sky-950/20 border border-sky-200 dark:border-sky-800 mb-8">
+      <p class="font-semibold text-sky-800 dark:text-sky-200 mb-1">Key Takeaway</p>
+      <p class="text-sm text-sky-700 dark:text-sky-300">Since January 2021, federal law requires all US hospitals to publish machine-readable files containing their complete price lists — including cash rates for uninsured patients and insurer-specific negotiated rates. This is the first time in American healthcare history that these prices have been legally required to be public. Compliance is still improving, but the data is increasingly accessible and actionable.</p>
+    </div>
+
+    <div class="prose dark:prose-invert max-w-none space-y-6">
+
+      <section>
+        <h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 mt-8 mb-3">Why Price Transparency Is Historically Unprecedented</h2>
+        <p class="text-gray-700 dark:text-gray-300">Healthcare pricing in the US has been opaque for decades by design. Hospitals negotiated secret rates with each insurer, patients received bills for amounts that bore no relationship to actual costs, and comparing prices across providers was effectively impossible. This information asymmetry contributed significantly to the US spending 17.8% of GDP on healthcare — nearly twice the average of other developed countries — with comparable or worse outcomes on many measures.</p>
+        <p class="text-gray-700 dark:text-gray-300 mt-3">The 2021 rule represents a structural shift: for the first time, the prices that hospitals actually accept from insurers are legally required to be public. Researchers, journalists, advocates, and patients can now see what a hospital charges Blue Cross of Illinois for an MRI vs. what it charges United Healthcare — information that was previously considered a proprietary trade secret.</p>
+      </section>
+
+      <section>
+        <h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 mt-8 mb-3">The Five Types of Standard Charges</h2>
+        <p class="text-gray-700 dark:text-gray-300">Under 45 CFR 180.50, hospitals must publish five types of standard charges for every item and service:</p>
+        <div class="space-y-3 mt-3">
+          {[
+            { label: '1. Gross Charge', desc: 'The chargemaster price — the undiscounted rate that serves as the ceiling for billing. No insurer pays this; uninsured patients may be billed at or near this rate without advocacy.' },
+            { label: '2. Discounted Cash Price', desc: 'The rate hospitals offer to uninsured patients or anyone paying out-of-pocket. This is typically 40-60% below gross charge and is the most actionable number for patients without insurance.' },
+            { label: '3. Payer-Specific Negotiated Rate', desc: 'The specific rate negotiated with each health insurer and each plan. These rates vary significantly — the same hospital might charge Aetna $1,200 and United $1,800 for the same procedure.' },
+            { label: '4. De-identified Minimum Rate', desc: 'The lowest negotiated rate across all payers, without identifying which insurer pays that rate. Gives patients a sense of the floor of actual payments.' },
+            { label: '5. De-identified Maximum Rate', desc: 'The highest negotiated rate across all payers. The gap between min and max rates reveals how much pricing varies by insurer and market power.' },
+          ].map(item => (
+            <div class="p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
+              <p class="font-semibold text-sm text-gray-900 dark:text-gray-100 mb-1">{item.label}</p>
+              <p class="text-sm text-gray-600 dark:text-gray-400">{item.desc}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section>
+        <h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 mt-8 mb-3">What Machine-Readable Files Look Like</h2>
+        <p class="text-gray-700 dark:text-gray-300">CMS requires MRFs to be in JSON or CSV format and published on the hospital's website in a publicly accessible location (no login required). The file must be findable via a footer link or a page titled "Standard Charges" or "Price Transparency."</p>
+        <p class="text-gray-700 dark:text-gray-300 mt-3">In practice, MRFs are often enormous — a major academic medical center may publish a file with hundreds of thousands of rows spanning every billed item, every payer, and every plan. The files are technically readable but not consumer-friendly without tools to process them. PlainProcedure extracts the cash/self-pay rates and CPT procedure codes to present them in a readable format alongside Medicare comparison data.</p>
+      </section>
+
+      <section>
+        <h2 class="text-xl font-bold text="gray-900 dark:text-gray-100 mt-8 mb-3">Enforcement and Compliance Trends</h2>
+        <p class="text-gray-700 dark:text-gray-300">CMS monitors compliance through automated web scraping of hospital websites, manual audits, and consumer complaints. Penalties have escalated:</p>
+        <ul class="list-disc pl-6 space-y-2 text-gray-700 dark:text-gray-300 mt-3">
+          <li><strong>Phase 1 (2021):</strong> $300/day penalty per hospital, widely seen as insufficient. Most large hospitals ignored the rule.</li>
+          <li><strong>Phase 2 (2022-present):</strong> Penalty increased to $10/bed/day minimum, up to $2 million/year for hospitals with 30+ beds. Compliance began to accelerate.</li>
+          <li><strong>Monitoring:</strong> CMS has issued thousands of warning letters and hundreds of penalty proposals. Some high-profile non-compliant hospital systems received national media coverage.</li>
+        </ul>
+        <p class="text-gray-700 dark:text-gray-300 mt-3">By 2024, CMS estimated 72% of hospitals were fully compliant with the MRF requirement, though the quality and completeness of MRF data varies widely.</p>
+      </section>
+
+      <section>
+        <h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 mt-8 mb-3">How Transparency Data Has Changed Healthcare</h2>
+        <p class="text-gray-700 dark:text-gray-300">While still early, the transparency rule has had measurable effects:</p>
+        <ul class="list-disc pl-6 space-y-2 text-gray-700 dark:text-gray-300 mt-3">
+          <li><strong>Exposed extreme price variation:</strong> Researchers found that the same MRI can cost $450 at one hospital and $3,400 at a competing hospital 5 miles away — with no quality difference.</li>
+          <li><strong>Revealed insurer pricing disparities:</strong> Some hospitals charge different insurers rates that vary by 3-5x for the same service. This data has informed antitrust investigations and contract negotiations.</li>
+          <li><strong>Enabled employer purchasing:</strong> Large employers that self-insure are using MRF data to direct employees to lower-cost hospitals and negotiate stronger contracts with health systems.</li>
+          <li><strong>Supported journalism:</strong> Multiple investigative series have used MRF data to document hospital price gouging, surprise billing practices, and the pricing power of hospital monopolies.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 mt-8 mb-3">What Transparency Doesn't Tell You</h2>
+        <p class="text-gray-700 dark:text-gray-300">Hospital price transparency has important limitations:</p>
+        <ul class="list-disc pl-6 space-y-2 text-gray-700 dark:text-gray-300 mt-3">
+          <li><strong>Physician fees are separate:</strong> MRFs only cover hospital facility charges. The physician who operates on you bills separately — often from a different entity entirely — and those bills are not required to be published.</li>
+          <li><strong>Your actual cost depends on your plan:</strong> Knowing the negotiated rate doesn't tell you what you'll pay — that depends on your deductible, copay structure, out-of-pocket maximum, and in-/out-of-network status.</li>
+          <li><strong>Quality differences aren't captured:</strong> A lower-priced hospital may have worse outcomes for complex procedures. Price comparison works best for routine, commodity services.</li>
+          <li><strong>Compliance is still incomplete:</strong> About 28% of hospitals (as of 2024) are not fully compliant. MRF data may be outdated, incomplete, or formatted in ways that are difficult to process.</li>
+        </ul>
+      </section>
+
+    </div>
+
+    <!-- FAQ -->
+    <div class="rounded-lg border border-[var(--color-border)] bg-[var(--color-card)] p-6 mt-10">
+      <h2 class="text-xl font-bold mb-4">Frequently Asked Questions</h2>
+      <div class="divide-y divide-[var(--color-border)]">
+        {faqItems.map((item, i) => (
+          <details class="group py-4" open={i === 0}>
+            <summary class="flex cursor-pointer items-center justify-between font-medium [&::-webkit-details-marker]:hidden list-none">
+              {item.q}
+              <svg class="h-5 w-5 shrink-0 text-[var(--color-muted)] transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+              </svg>
+            </summary>
+            <p class="mt-2 text-sm text-[var(--color-muted)]">{item.a}</p>
+          </details>
+        ))}
+      </div>
+    </div>
+
+    <script type="application/ld+json" set:html={JSON.stringify({
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": faqItems.map(item => ({
+        "@type": "Question",
+        "name": item.q,
+        "acceptedAnswer": { "@type": "Answer", "text": item.a }
+      }))
+    })} />
+
+    <div class="mt-8 pt-6 border-t border-[var(--color-border)]">
+      <p class="text-sm text-[var(--color-muted)] mb-3">Explore the data:</p>
+      <div class="flex flex-wrap gap-3">
+        <a href="/transparency/" class="text-sm text-[var(--color-accent)] hover:underline">Hospital Price Transparency Data Hub</a>
+        <a href="/guides/negotiating-your-medical-bill" class="text-sm text-[var(--color-accent)] hover:underline">Negotiating Your Medical Bill</a>
+        <a href="/guides/hospital-markup-explained" class="text-sm text-[var(--color-accent)] hover:underline">Hospital Markup Explained</a>
+        <a href="/guides/how-to-read-a-medical-bill" class="text-sm text-[var(--color-accent)] hover:underline">How to Read a Medical Bill</a>
+      </div>
+    </div>
+  </article>
+</Base>

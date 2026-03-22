@@ -164,3 +164,27 @@ export interface ProviderProcedurePricingRow {
   est_cash: number | null;
   total_services: number | null;
 }
+
+export interface HospitalPrice {
+  hospital_id: string;
+  hospital_name: string | null;
+  state: string | null;
+  city: string | null;
+  hcpcs_cpt: string;
+  description: string | null;
+  rate_category: string;
+  standard_charge: number;
+  payer_name: string | null;
+  plan_name: string | null;
+}
+
+export interface HospitalPriceWithProcedure extends HospitalPrice {
+  procedure_description: string | null;
+  procedure_slug: string | null;
+}
+
+export interface TransparencyStatSummary {
+  state: string;
+  hospital_count: number;
+  price_records: number;
+}

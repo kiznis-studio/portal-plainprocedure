@@ -1,0 +1,274 @@
+---
+export const prerender = false;
+import Base from '../../layouts/Base.astro';
+import { getTransparencyDataByState, getTransparencyHospitalCount, getTransparencyPriceRecordCount, getTopCashProcedures } from '../../lib/db';
+
+const db = Astro.locals.runtime.env.DB;
+
+const [stateData, hospitalCount, recordCount, topCashProcedures] = await Promise.all([
+  getTransparencyDataByState(db),
+  getTransparencyHospitalCount(db),
+  getTransparencyPriceRecordCount(db),
+  getTopCashProcedures(db, 15),
+]);
+
+// CMS enforcement stats (as of 2024 — hardcoded, publicly available from CMS reports)
+const totalHospitals = 6120; // CMS-registered hospitals subject to the rule
+const cmsPenaltiesIssued = 887; // hospitals issued warning letters or civil monetary penalty proposals as of end 2024
+const estimatedCompliance = 72; // % compliance per CMS monitoring
+
+function fmt(n: number | null): string {
+  if (n == null) return 'N/A';
+  return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function fmtK(n: number): string {
+  if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+  return n.toLocaleString('en-US');
+}
+
+const siteUrl = 'https://plainprocedure.com';
+
+const faqItems = [
+  {
+    q: 'What is the Hospital Price Transparency Rule?',
+    a: 'The Hospital Price Transparency Rule, effective January 1, 2021, requires all US hospitals to publish machine-readable files (MRFs) containing their standard charges for all items and services. This includes payer-specific negotiated rates, gross charges, discounted cash prices, and de-identified minimum and maximum negotiated charges.'
+  },
+  {
+    q: 'What is a Machine-Readable File (MRF)?',
+    a: 'A Machine-Readable File is a structured data file — typically JSON or CSV — that hospitals publish on their websites containing their complete price lists. CMS requires the file to include: gross charges, payer-specific negotiated rates, cash/self-pay discounted prices, and de-identified min/max negotiated charges for all covered items and services.'
+  },
+  {
+    q: 'What is a cash price at a hospital?',
+    a: 'The cash price (or self-pay discounted price) is the amount a hospital will accept as payment in full from a patient without insurance, or from an insured patient choosing to pay out-of-pocket. Cash prices are typically much lower than gross chargemaster rates but often higher than negotiated insurer rates. They vary enormously by hospital.'
+  },
+  {
+    q: 'Are hospitals actually complying with price transparency requirements?',
+    a: 'Compliance has improved significantly since 2021 but remains incomplete. CMS estimates approximately 72% of hospitals are now compliant. Hospitals that fail to comply face civil monetary penalties of up to $2 million per year. CMS has issued over 887 warning letters and penalty proposals through 2024.'
+  },
+  {
+    q: 'How can I use hospital price data to lower my medical bill?',
+    a: 'You can use published hospital cash prices to negotiate your bill. If you see a hospital charges $500 cash for a procedure, but your insurer\'s EOB shows a negotiated rate of $800, you may be able to request the lower cash rate — especially if you\'re uninsured or your deductible hasn\'t been met. Always ask the billing department before paying, and compare estimates across hospitals in your area.'
+  },
+  {
+    q: 'Where can I find a hospital\'s machine-readable file?',
+    a: 'Each hospital is required to post its MRF on its website. You can usually find it by searching "[Hospital Name] price transparency" or "[Hospital Name] machine readable file". CMS also maintains a list of non-compliant hospitals. PlainProcedure publishes cash prices from hospitals that have made their MRFs publicly accessible.'
+  },
+];
+---
+
+<Base
+  title="Hospital Price Transparency — Machine-Readable File Data"
+  description={`Hospital price transparency data from CMS-required Machine-Readable Files (MRFs). Cash/self-pay prices, compliance status, and how to use transparency data to lower your medical bills.`}
+  breadcrumbs={[
+    { name: 'Home', href: '/' },
+    { name: 'Price Transparency' },
+  ]}
+>
+  <section class="py-8 md:py-12">
+    <div class="container">
+
+      <!-- Header -->
+      <div class="mb-8">
+        <h1 class="text-3xl md:text-4xl font-bold mb-3">Hospital Price Transparency</h1>
+        <p class="text-lg text-[var(--color-muted)] max-w-2xl">
+          Under federal law, hospitals must publish their prices — including cash rates for uninsured patients. Here's what that data reveals, and how to use it.
+        </p>
+      </div>
+
+      <!-- Rule Explainer -->
+      <div class="p-5 rounded-lg bg-sky-50 dark:bg-sky-950/20 border border-sky-200 dark:border-sky-800 mb-8">
+        <div class="flex items-start gap-3">
+          <svg class="w-6 h-6 text-sky-600 dark:text-sky-400 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+          </svg>
+          <div>
+            <p class="font-semibold text-sky-800 dark:text-sky-200 mb-1">Federal Law: Hospital Price Transparency Rule</p>
+            <p class="text-sm text-sky-700 dark:text-sky-300">
+              Effective January 1, 2021, CMS requires all ~6,120 US hospitals to publish machine-readable files (MRFs) with their complete price lists. This includes cash/self-pay rates, negotiated rates with each insurer, gross charges, and min/max rates. Penalties reach $2 million/year for non-compliance.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Stats Grid -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
+        <div class="card text-center">
+          <div class="text-3xl font-bold text-[var(--color-accent)]">{hospitalCount > 0 ? hospitalCount.toLocaleString() : '—'}</div>
+          <div class="text-sm text-[var(--color-muted)]">Hospitals with MRF Data</div>
+          <div class="text-xs text-[var(--color-muted)] mt-1">in PlainProcedure</div>
+        </div>
+        <div class="card text-center">
+          <div class="text-3xl font-bold text-teal-600 dark:text-teal-400">{fmtK(recordCount)}</div>
+          <div class="text-sm text-[var(--color-muted)]">Price Records</div>
+          <div class="text-xs text-[var(--color-muted)] mt-1">from published MRFs</div>
+        </div>
+        <div class="card text-center">
+          <div class="text-3xl font-bold text-amber-600 dark:text-amber-400">{estimatedCompliance}%</div>
+          <div class="text-sm text-[var(--color-muted)]">Compliance Rate</div>
+          <div class="text-xs text-[var(--color-muted)] mt-1">CMS estimate, 2024</div>
+        </div>
+        <div class="card text-center">
+          <div class="text-3xl font-bold text-[var(--color-foreground)]">{cmsPenaltiesIssued.toLocaleString()}</div>
+          <div class="text-sm text-[var(--color-muted)]">CMS Warning Letters</div>
+          <div class="text-xs text-[var(--color-muted)] mt-1">issued through 2024</div>
+        </div>
+      </div>
+
+      <!-- What MRFs Must Include -->
+      <div class="card mb-8">
+        <h2 class="text-xl font-bold mb-4">What Must Be in a Machine-Readable File</h2>
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {[
+            { label: 'Gross Charges', desc: 'The undiscounted chargemaster rate for each item or service — often 4-10x what anyone pays.' },
+            { label: 'Cash / Self-Pay Price', desc: 'The discounted price available to uninsured patients or those choosing to pay out-of-pocket.' },
+            { label: 'Payer-Negotiated Rates', desc: 'The specific rate negotiated with each health insurer and each plan, by procedure code.' },
+            { label: 'De-identified Min/Max', desc: 'The lowest and highest negotiated rates across all payers — without identifying the insurer.' },
+            { label: '300 Shoppable Services', desc: 'A consumer-friendly display of common planned procedures (non-emergency) in plain language.' },
+            { label: 'All Items & Services', desc: 'Every billable service: procedures, supplies, room charges, medications, labs, and more.' },
+          ].map(item => (
+            <div class="p-3 rounded-lg bg-[var(--color-bg)] border border-[var(--color-border)]">
+              <div class="font-semibold text-sm mb-1">{item.label}</div>
+              <div class="text-xs text-[var(--color-muted)]">{item.desc}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <!-- Top Cash Prices from MRF -->
+      {topCashProcedures.length > 0 && (
+        <div class="mb-8">
+          <h2 class="text-2xl font-bold mb-2">Highest Published Cash Prices</h2>
+          <p class="text-sm text-[var(--color-muted)] mb-4">
+            The most expensive procedures by cash/self-pay rate, from hospitals that have published their MRFs.
+          </p>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-[var(--color-border)]">
+                  <th class="text-left py-3 px-2 font-semibold">CPT Code</th>
+                  <th class="text-left py-3 px-2 font-semibold">Procedure</th>
+                  <th class="text-left py-3 px-2 font-semibold hidden sm:table-cell">Hospital</th>
+                  <th class="text-right py-3 px-2 font-semibold">Cash Price</th>
+                </tr>
+              </thead>
+              <tbody>
+                {topCashProcedures.map(p => (
+                  <tr class="border-b border-[var(--color-border)] hover:bg-[var(--color-card)]">
+                    <td class="py-2 px-2 font-mono text-xs text-[var(--color-muted)]">{p.hcpcs_cpt}</td>
+                    <td class="py-2 px-2">
+                      {p.procedure_slug ? (
+                        <a href={`/procedure/${p.procedure_slug}`} class="text-[var(--color-accent)] hover:underline">
+                          {p.procedure_description || p.description || p.hcpcs_cpt}
+                        </a>
+                      ) : (
+                        <span>{p.description || p.hcpcs_cpt}</span>
+                      )}
+                    </td>
+                    <td class="py-2 px-2 text-[var(--color-muted)] hidden sm:table-cell text-xs">{p.hospital_name}</td>
+                    <td class="py-2 px-2 text-right font-medium text-amber-600 dark:text-amber-400">{fmt(p.standard_charge)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      <!-- State Coverage -->
+      {stateData.length > 0 && (
+        <div class="mb-8">
+          <h2 class="text-2xl font-bold mb-2">MRF Data by State</h2>
+          <p class="text-sm text-[var(--color-muted)] mb-4">States with hospital price transparency data in PlainProcedure's database.</p>
+          <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {stateData.map(s => (
+              <div class="flex items-center justify-between p-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-card)]">
+                <div>
+                  <span class="font-semibold text-sm">{s.state}</span>
+                  <span class="text-xs text-[var(--color-muted)] ml-2">{s.hospital_count} hospital{s.hospital_count > 1 ? 's' : ''}</span>
+                </div>
+                <span class="text-xs text-[var(--color-muted)]">{s.price_records.toLocaleString()} records</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <!-- How to Use This Data -->
+      <div class="card mb-8">
+        <h2 class="text-xl font-bold mb-4">How to Use Price Transparency Data</h2>
+        <ol class="space-y-4">
+          {[
+            { step: '1', title: 'Find the cash price before scheduling', desc: 'Look up your procedure on PlainProcedure or the hospital\'s own price tool. If the cash price is lower than your cost-sharing under insurance, it may be worth paying out-of-pocket.' },
+            { step: '2', title: 'Compare across hospitals in your area', desc: 'Cash prices for the same procedure can vary 3-10x between hospitals in the same metro. For elective or planned procedures, it\'s worth calling 2-3 hospitals for price quotes.' },
+            { step: '3', title: 'Use the cash price to negotiate', desc: 'If you\'re insured but facing a large out-of-pocket cost, you can request the cash rate — especially if you\'re uninsured or your deductible hasn\'t been met. Many billing departments will honor it.' },
+            { step: '4', title: 'Ask for an itemized bill', desc: 'After any service, request a complete itemized bill. Medical billing errors are common. Compare each line item against published MRF prices.' },
+            { step: '5', title: 'Request financial assistance', desc: 'Nonprofit hospitals (which make up about 60% of US hospitals) are legally required to offer charity care for patients below certain income thresholds. Always ask about financial assistance programs.' },
+          ].map(item => (
+            <li class="flex gap-4">
+              <span class="flex-shrink-0 w-7 h-7 rounded-full bg-[var(--color-accent)] text-white text-sm font-bold flex items-center justify-center">{item.step}</span>
+              <div>
+                <div class="font-semibold text-sm">{item.title}</div>
+                <div class="text-sm text-[var(--color-muted)] mt-0.5">{item.desc}</div>
+              </div>
+            </li>
+          ))}
+        </ol>
+      </div>
+
+      <!-- FAQ -->
+      <div class="rounded-lg border border-[var(--color-border)] bg-[var(--color-card)] p-6 mb-8">
+        <h2 class="text-xl font-bold mb-4">Frequently Asked Questions</h2>
+        <div class="divide-y divide-[var(--color-border)]">
+          {faqItems.map((item, i) => (
+            <details class="group py-4" open={i === 0}>
+              <summary class="flex cursor-pointer items-center justify-between font-medium [&::-webkit-details-marker]:hidden list-none">
+                {item.q}
+                <svg class="h-5 w-5 shrink-0 text-[var(--color-muted)] transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                </svg>
+              </summary>
+              <p class="mt-2 text-sm text-[var(--color-muted)]">{item.a}</p>
+            </details>
+          ))}
+        </div>
+      </div>
+
+      <!-- Related Guides -->
+      <div class="mb-8">
+        <h2 class="text-xl font-bold mb-4">Related Guides</h2>
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <a href="/guides/hospital-markup-explained" class="card hover:border-[var(--color-accent)] transition-colors">
+            <div class="font-semibold mb-1">Hospital Markup Explained</div>
+            <div class="text-sm text-[var(--color-muted)]">Why hospitals bill 3-10x what Medicare pays and what it means for patients.</div>
+          </a>
+          <a href="/guides/how-to-read-a-medical-bill" class="card hover:border-[var(--color-accent)] transition-colors">
+            <div class="font-semibold mb-1">How to Read a Medical Bill</div>
+            <div class="text-sm text-[var(--color-muted)]">A practical guide to understanding every line item on your bill.</div>
+          </a>
+          <a href="/guides/negotiating-your-medical-bill" class="card hover:border-[var(--color-accent)] transition-colors">
+            <div class="font-semibold mb-1">Negotiating Your Medical Bill</div>
+            <div class="text-sm text-[var(--color-muted)]">Proven scripts and tactics for reducing hospital and provider bills.</div>
+          </a>
+        </div>
+      </div>
+
+      <!-- Source Notes -->
+      <div class="text-sm text-[var(--color-muted)]">
+        <p>MRF price data sourced from hospital-published machine-readable files per CMS Hospital Price Transparency Rule (45 CFR 180). Compliance statistics from CMS Hospital Price Transparency enforcement reports. Medicare procedure pricing from CMS Medicare Physician & Other Practitioners by Geography & Service (2023).</p>
+      </div>
+
+    </div>
+  </section>
+
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": faqItems.map(item => ({
+      "@type": "Question",
+      "name": item.q,
+      "acceptedAnswer": { "@type": "Answer", "text": item.a }
+    }))
+  })} />
+
+</Base>

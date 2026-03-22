@@ -1,0 +1,208 @@
+---
+export const prerender = false;
+import Base from '../../layouts/Base.astro';
+
+const faqItems = [
+  {
+    q: 'Can I really negotiate a hospital bill?',
+    a: 'Yes — negotiating medical bills is common and often successful. Hospitals, especially nonprofits, routinely reduce bills by 20-60% for patients who ask. The key is knowing the right leverage points: cash price discounts, financial assistance programs, and the published chargemaster vs. actual cost differences. Most billing departments have discretion to reduce or restructure bills, particularly for large balances.'
+  },
+  {
+    q: 'When is the best time to negotiate?',
+    a: 'The ideal time to negotiate is before a planned (elective) procedure, when you have the most leverage. But you can negotiate at any point: before, during billing, or even after receiving a bill. If a bill is overdue or in collections, you have additional leverage — collection agencies purchase debt at steep discounts and have room to settle.'
+  },
+  {
+    q: 'What is a cash price and how does it help me negotiate?',
+    a: 'A cash price (or self-pay discounted price) is the amount a hospital will accept from an uninsured patient paying out-of-pocket. Under the Hospital Price Transparency Rule, hospitals must publish these prices. If the cash price is lower than your cost-sharing under insurance, you may be able to pay that rate instead — even if you have insurance — by asking the billing department directly.'
+  },
+  {
+    q: 'What if I can\'t afford to pay anything?',
+    a: 'Nonprofit hospitals (about 60% of US hospitals) are required by IRS rules to provide charity care to patients who cannot pay. This can reduce or eliminate your bill entirely if your income falls below 200-400% of the Federal Poverty Level (the threshold varies by hospital). Always ask about financial assistance or charity care programs before paying any amount or entering a payment plan.'
+  },
+  {
+    q: 'What is a medical billing advocate?',
+    a: 'A medical billing advocate (or patient advocate) is a professional who reviews your bills for errors, negotiates with providers on your behalf, and guides you through appeals. They typically work on contingency (15-30% of whatever they save you) or a flat fee. For bills over $5,000 or complex disputes, they can be worth engaging. The Patient Advocate Foundation offers free assistance for certain conditions.'
+  },
+  {
+    q: 'How do I dispute a medical billing error?',
+    a: 'Request an itemized bill and compare each line item to your Explanation of Benefits (EOB) from your insurer. Common errors include duplicate charges, upcoding (billing a more expensive service than performed), unbundling (charging separately for services that should be grouped), and incorrect diagnosis codes. Write a formal dispute letter citing the specific error and request a corrected bill. If unresolved, escalate to your state insurance commissioner.'
+  },
+];
+---
+
+<Base
+  title="Negotiating Your Medical Bill — A Practical Guide"
+  description="How to negotiate hospital and doctor bills using published price transparency data, financial assistance programs, and proven negotiation tactics that can reduce your bill by 20-60%."
+  breadcrumbs={[
+    { name: 'Home', href: '/' },
+    { name: 'Guides', href: '/guides/' },
+    { name: 'Negotiating Your Medical Bill' },
+  ]}
+>
+  <article class="mx-auto max-w-3xl px-4 py-8 md:py-12">
+    <h1 class="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-3">Negotiating Your Medical Bill</h1>
+    <p class="text-lg text-gray-600 dark:text-gray-400 mb-6">
+      How to reduce hospital and doctor bills by 20-60% using transparency data, financial assistance programs, and simple negotiation tactics.
+    </p>
+
+    <div class="p-4 rounded-lg bg-sky-50 dark:bg-sky-950/20 border border-sky-200 dark:border-sky-800 mb-8">
+      <p class="font-semibold text-sky-800 dark:text-sky-200 mb-1">Key Takeaway</p>
+      <p class="text-sm text-sky-700 dark:text-sky-300">Medical bills are not fixed prices — they are starting points for negotiation. Hospitals routinely accept 40-80% of their listed price, especially for uninsured or underinsured patients. Federal law now requires hospitals to publish their actual cash prices, giving patients real leverage for the first time.</p>
+    </div>
+
+    <div class="prose dark:prose-invert max-w-none space-y-6">
+
+      <section>
+        <h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 mt-8 mb-3">Why Medical Bills Are Negotiable</h2>
+        <p class="text-gray-700 dark:text-gray-300">The chargemaster (hospital's listed price) is not what anyone is expected to pay in full. Insurers negotiate rates that are typically 30-70% below chargemaster. Medicare pays a regulated rate that is 20-50% below insurer rates. Cash/self-pay patients are quoted a "discounted" price that is still often higher than Medicare but lower than chargemaster.</p>
+        <p class="text-gray-700 dark:text-gray-300 mt-3">The gap between these prices is the negotiation space. Hospitals build in this buffer precisely because they expect negotiation. A hospital that would accept $1,200 from an insurer for a procedure will often accept $900-$1,100 from an uninsured patient who asks — rather than collect nothing or send the bill to collections (where they might recover only $200-$400).</p>
+      </section>
+
+      <section>
+        <h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 mt-8 mb-3">Step 1 — Know the Numbers Before You Negotiate</h2>
+        <p class="text-gray-700 dark:text-gray-300">Before calling the billing department, gather:</p>
+        <ul class="list-disc pl-6 space-y-2 text-gray-700 dark:text-gray-300 mt-3">
+          <li><strong>The published cash price</strong> — look it up on PlainProcedure or the hospital's own price transparency tool. This is your floor — the hospital is legally required to honor it.</li>
+          <li><strong>Medicare payment rate</strong> — also available on PlainProcedure. This is what Medicare pays for the same procedure. It's a useful reference point: hospitals often accept offers 10-30% above Medicare.</li>
+          <li><strong>Your EOB (Explanation of Benefits)</strong> — if you have insurance, your EOB shows what your insurer's negotiated rate was. If you're being billed more than that rate for your cost-sharing portion, something is wrong.</li>
+          <li><strong>Competitor prices</strong> — check what other hospitals in your area charge for the same procedure. Price variation within the same market gives you leverage.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 mt-8 mb-3">Step 2 — Request an Itemized Bill</h2>
+        <p class="text-gray-700 dark:text-gray-300">Always request an itemized bill (not just a summary statement). Federal law requires providers to give you one upon request. Review every line item for:</p>
+        <ul class="list-disc pl-6 space-y-2 text-gray-700 dark:text-gray-300 mt-3">
+          <li><strong>Duplicate charges</strong> — the same service billed twice (very common)</li>
+          <li><strong>Upcoding</strong> — billing a more complex/expensive version of a service than was actually performed</li>
+          <li><strong>Unbundling</strong> — billing separately for services that should be grouped under a single code (e.g., charging for each stitch in a wound closure)</li>
+          <li><strong>Services you didn't receive</strong> — supplies charged that weren't used, consultations from physicians you never saw</li>
+          <li><strong>Incorrect procedure codes</strong> — wrong CPT/HCPCS codes that change what's billed</li>
+        </ul>
+        <p class="text-gray-700 dark:text-gray-300 mt-3">Studies consistently find billing errors in 40-80% of hospital bills. The Medical Billing Advocates of America estimates the average error costs patients $1,300.</p>
+      </section>
+
+      <section>
+        <h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 mt-8 mb-3">Step 3 — Apply for Financial Assistance First</h2>
+        <p class="text-gray-700 dark:text-gray-300">Before negotiating, determine whether you qualify for charity care or financial assistance. Nonprofit hospitals — which receive significant tax exemptions — are required by the IRS (Section 501(r)) to offer financial assistance to patients who cannot pay.</p>
+        <div class="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4 mt-3">
+          <p class="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-2">Financial Assistance Income Thresholds</p>
+          <p class="text-sm text-gray-600 dark:text-gray-400">Most nonprofit hospitals offer free or significantly reduced care for patients with income below 200-300% of the Federal Poverty Level (FPL). Some extend partial assistance up to 400% FPL. For a single person in 2024, 200% FPL is approximately $29,160/year; 400% FPL is approximately $58,320/year.</p>
+        </div>
+        <p class="text-gray-700 dark:text-gray-300 mt-3">Ask the billing department specifically: "Do you have a financial assistance or charity care program? What are the income eligibility requirements?" They are required to provide this information. If you're turned away without a clear answer, escalate to a patient advocate or hospital social worker.</p>
+      </section>
+
+      <section>
+        <h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 mt-8 mb-3">Step 4 — Make a Counter-Offer</h2>
+        <p class="text-gray-700 dark:text-gray-300">If you don't qualify for charity care, negotiate directly. Call the billing department and say something like:</p>
+        <div class="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4 mt-3 border-l-4 border-sky-400">
+          <p class="text-sm italic text-gray-700 dark:text-gray-300">"I'm looking at your published cash price for this procedure, which is $[X]. I wasn't quoted that rate upfront. I'd like to pay the cash price and settle this today. Can we make that work?"</p>
+        </div>
+        <p class="text-gray-700 dark:text-gray-300 mt-3">If they push back, try:</p>
+        <div class="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4 mt-3 border-l-4 border-teal-400">
+          <p class="text-sm italic text-gray-700 dark:text-gray-300">"I understand. I can pay $[Y] today to settle the account in full. I want to avoid a payment plan if possible. Is there anything you can do?"</p>
+        </div>
+        <p class="text-gray-700 dark:text-gray-300 mt-3">Key tactics:</p>
+        <ul class="list-disc pl-6 space-y-2 text-gray-700 dark:text-gray-300 mt-2">
+          <li>Offer to pay in full immediately in exchange for a discount (hospitals prefer cash now over collections risk)</li>
+          <li>Reference Medicare rates: "I understand Medicare pays $[Z] for this code. Could you accept something in that range?"</li>
+          <li>Ask for a supervisor or financial counselor if the first person says they can't help</li>
+          <li>Get any agreed price reduction in writing before paying</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 mt-8 mb-3">Step 5 — If Billed Over Your Insurer's Negotiated Rate</h2>
+        <p class="text-gray-700 dark:text-gray-300">If you have insurance and your cost-sharing exceeds what your EOB says you owe, contact your insurer first — they may need to reprocess the claim. If you're being balance-billed by an out-of-network provider (even if your visit was at an in-network facility), the <strong>No Surprises Act</strong> (effective January 1, 2022) limits what you can be charged to in-network cost-sharing rates in most emergency and certain non-emergency situations.</p>
+        <p class="text-gray-700 dark:text-gray-300 mt-3">Report potential No Surprises Act violations to CMS at <strong>1-800-MEDICARE</strong> or through the <strong>CMS complaint portal</strong>. This can result in rapid resolution — providers don't want CMS scrutiny.</p>
+      </section>
+
+      <section>
+        <h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 mt-8 mb-3">Before a Planned Procedure: Pre-Negotiation</h2>
+        <p class="text-gray-700 dark:text-gray-300">The most powerful negotiation happens before you receive care. Steps:</p>
+        <ol class="list-decimal pl-6 space-y-2 text-gray-700 dark:text-gray-300 mt-3">
+          <li>Look up the procedure code (CPT/HCPCS) from your doctor's order</li>
+          <li>Find the cash price on PlainProcedure for hospitals in your area</li>
+          <li>Call 2-3 hospitals and ask: "What is your cash price for CPT [code]?" — get the quote in writing</li>
+          <li>Call your insurer: "What is the negotiated rate for CPT [code] at [hospital]? What will my out-of-pocket be?"</li>
+          <li>Compare the cash price vs. your cost-sharing. Choose the lower option</li>
+          <li>If paying cash at a hospital you've previously used insurance at, inform billing upfront</li>
+        </ol>
+      </section>
+
+      <section>
+        <h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 mt-8 mb-3">Resources and Tools</h2>
+        <ul class="list-none space-y-3 mt-3">
+          <li class="flex items-start gap-3">
+            <span class="text-[var(--color-accent)] font-bold mt-0.5">→</span>
+            <div>
+              <a href="/tools/cost-estimator" class="text-[var(--color-accent)] hover:underline font-medium">PlainProcedure Cost Estimator</a>
+              <p class="text-sm text-gray-600 dark:text-gray-400 mt-0.5">Compare Medicare rates, commercial insurance estimates, and cash prices by procedure and state.</p>
+            </div>
+          </li>
+          <li class="flex items-start gap-3">
+            <span class="text-[var(--color-accent)] font-bold mt-0.5">→</span>
+            <div>
+              <span class="font-medium">Patient Advocate Foundation</span>
+              <p class="text-sm text-gray-600 dark:text-gray-400 mt-0.5">patientadvocate.org — free case management for patients with serious illness, including billing disputes.</p>
+            </div>
+          </li>
+          <li class="flex items-start gap-3">
+            <span class="text-[var(--color-accent)] font-bold mt-0.5">→</span>
+            <div>
+              <span class="font-medium">Hospital Financial Assistance Locator</span>
+              <p class="text-sm text-gray-600 dark:text-gray-400 mt-0.5">Each hospital's financial assistance policy must be posted on its website. Search "[Hospital Name] financial assistance policy".</p>
+            </div>
+          </li>
+          <li class="flex items-start gap-3">
+            <span class="text-[var(--color-accent)] font-bold mt-0.5">→</span>
+            <div>
+              <span class="font-medium">CMS No Surprises Help Desk</span>
+              <p class="text-sm text-gray-600 dark:text-gray-400 mt-0.5">1-800-985-3059 — report surprise billing violations and get help understanding your rights.</p>
+            </div>
+          </li>
+        </ul>
+      </section>
+
+    </div>
+
+    <!-- FAQ -->
+    <div class="rounded-lg border border-[var(--color-border)] bg-[var(--color-card)] p-6 mt-10">
+      <h2 class="text-xl font-bold mb-4">Frequently Asked Questions</h2>
+      <div class="divide-y divide-[var(--color-border)]">
+        {faqItems.map((item, i) => (
+          <details class="group py-4" open={i === 0}>
+            <summary class="flex cursor-pointer items-center justify-between font-medium [&::-webkit-details-marker]:hidden list-none">
+              {item.q}
+              <svg class="h-5 w-5 shrink-0 text-[var(--color-muted)] transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+              </svg>
+            </summary>
+            <p class="mt-2 text-sm text-[var(--color-muted)]">{item.a}</p>
+          </details>
+        ))}
+      </div>
+    </div>
+
+    <script type="application/ld+json" set:html={JSON.stringify({
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": faqItems.map(item => ({
+        "@type": "Question",
+        "name": item.q,
+        "acceptedAnswer": { "@type": "Answer", "text": item.a }
+      }))
+    })} />
+
+    <!-- Related -->
+    <div class="mt-8 pt-6 border-t border-[var(--color-border)]">
+      <p class="text-sm text-[var(--color-muted)] mb-3">Related guides:</p>
+      <div class="flex flex-wrap gap-3">
+        <a href="/guides/how-to-read-a-medical-bill" class="text-sm text-[var(--color-accent)] hover:underline">How to Read a Medical Bill</a>
+        <a href="/guides/hospital-markup-explained" class="text-sm text-[var(--color-accent)] hover:underline">Hospital Markup Explained</a>
+        <a href="/guides/understanding-medicare-costs" class="text-sm text-[var(--color-accent)] hover:underline">Understanding Medicare Costs</a>
+        <a href="/transparency/" class="text-sm text-[var(--color-accent)] hover:underline">Hospital Price Transparency</a>
+      </div>
+    </div>
+  </article>
+</Base>

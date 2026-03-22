@@ -348,3 +348,66 @@ export async function warmQueryCache(db: D1Database): Promise<void> {
   const elapsed = Date.now() - start;
   console.log(`[cache] Warming complete: ${queryCache.size} entries in ${elapsed}ms`);
 }
+
+// --- Hospital Price Transparency ---
+export async function getHospitalPrices(db: D1Database, hospitalId: string, limit: number = 50): Promise<import('./types').HospitalPriceWithProcedure[]> {
+  const r = await db.prepare(
+    `SELECT hp.*, p.description as procedure_description, p.slug as procedure_slug
+     FROM hospital_prices hp
+     LEFT JOIN procedures p ON hp.hcpcs_cpt = p.code
+     WHERE hp.hospital_id = ?1 AND hp.rate_category = 'cash'
+     ORDER BY hp.standard_charge DESC
+     LIMIT ?2`
+  ).bind(hospitalId, limit).all<import('./types').HospitalPriceWithProcedure>();
+  return r.results;
+}
+
+export async function getHospitalPriceByCode(db: D1Database, hospitalId: string, code: string): Promise<import('./types').HospitalPrice | null> {
+  const r = await db.prepare(
+    `SELECT * FROM hospital_prices
+     WHERE hospital_id = ?1 AND hcpcs_cpt = ?2 AND rate_category = 'cash'
+     LIMIT 1`
+  ).bind(hospitalId, code).first<import('./types').HospitalPrice>();
+  return r;
+}
+
+export async function getTransparencyDataByState(db: D1Database): Promise<import('./types').TransparencyStatSummary[]> {
+  return cached('transparency:by-state', async () => {
+    const r = await db.prepare(
+      `SELECT state, COUNT(DISTINCT hospital_id) as hospital_count, COUNT(*) as price_records
+       FROM hospital_prices
+       WHERE state IS NOT NULL
+       GROUP BY state
+       ORDER BY hospital_count DESC`
+    ).all<import('./types').TransparencyStatSummary>();
+    return r.results;
+  });
+}
+
+export async function getTransparencyHospitalCount(db: D1Database): Promise<number> {
+  return cached('transparency:hospital-count', async () => {
+    const r = await db.prepare('SELECT COUNT(DISTINCT hospital_id) as cnt FROM hospital_prices').first<{ cnt: number }>();
+    return r?.cnt ?? 0;
+  }) as Promise<number>;
+}
+
+export async function getTransparencyPriceRecordCount(db: D1Database): Promise<number> {
+  return cached('transparency:record-count', async () => {
+    const r = await db.prepare('SELECT COUNT(*) as cnt FROM hospital_prices').first<{ cnt: number }>();
+    return r?.cnt ?? 0;
+  }) as Promise<number>;
+}
+
+export async function getTopCashProcedures(db: D1Database, limit: number = 20): Promise<import('./types').HospitalPriceWithProcedure[]> {
+  return cached('transparency:top-cash', async () => {
+    const r = await db.prepare(
+      `SELECT hp.*, p.description as procedure_description, p.slug as procedure_slug
+       FROM hospital_prices hp
+       LEFT JOIN procedures p ON hp.hcpcs_cpt = p.code
+       WHERE hp.rate_category = 'cash' AND hp.standard_charge > 0
+       ORDER BY hp.standard_charge DESC
+       LIMIT 50`
+    ).all<import('./types').HospitalPriceWithProcedure>();
+    return r.results;
+  }).then(rows => rows.slice(0, limit));
+}

@@ -1,11 +1,15 @@
 ---
 import Base from '../../layouts/Base.astro';
-import { getHospitalBySlug } from '../../lib/db';
+import { getHospitalBySlug, getHospitalPrices } from '../../lib/db';
 
 const db = Astro.locals.runtime.env.DB;
 const { slug } = Astro.params;
 const hospital = await getHospitalBySlug(db, slug!);
 if (!hospital) return Astro.redirect('/404');
+
+// Load MRF price data if available for this hospital
+const mrfPrices = await getHospitalPrices(db, hospital.facility_id, 30);
+const hasMrfData = mrfPrices.length > 0;
 
 function ratingStars(rating: number | null): string {
   if (rating == null) return 'Not rated';
@@ -19,11 +23,16 @@ function measureLabel(better: number, same: number, worse: number): string {
   if (worse > 0) parts.push(`${worse} below avg`);
   return parts.join(', ') || 'No data';
 }
+
+function fmt(n: number | null): string {
+  if (n == null) return 'N/A';
+  return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
 ---
 
 <Base
-  title={hospital.name}
-  description={`${hospital.name} in ${hospital.city}, ${hospital.state}. ${hospital.hospital_type || 'Hospital'}. Overall rating: ${hospital.overall_rating ?? 'Not rated'}/5 stars.`}
+  title={`${hospital.name} — Pricing & Quality`}
+  description={`${hospital.name} in ${hospital.city}, ${hospital.state}. ${hospital.hospital_type || 'Hospital'}. Overall rating: ${hospital.overall_rating ?? 'Not rated'}/5 stars.${hasMrfData ? ' Published cash price data available.' : ''}`}
   breadcrumbs={[
     { name: 'Home', href: '/' },
     { name: 'Hospitals', href: '/hospitals/' },
@@ -38,6 +47,12 @@ function measureLabel(better: number, same: number, worse: number): string {
           <a href={`/state/${hospital.state}`} class="hover:text-[var(--color-accent)]">{hospital.state}</a>
           <span class="mx-1">&middot;</span>
           {hospital.hospital_type}
+          {hasMrfData && (
+            <span class="ml-2 inline-flex items-center gap-1 bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300 text-xs px-2 py-0.5 rounded-full font-medium">
+              <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" /></svg>
+              Price Transparency Published
+            </span>
+          )}
         </div>
         <h1 class="text-3xl md:text-4xl font-bold">{hospital.name}</h1>
         <p class="text-[var(--color-muted)] mt-2">{hospital.address}, {hospital.city}, {hospital.state} {hospital.zip}</p>
@@ -87,6 +102,67 @@ function measureLabel(better: number, same: number, worse: number): string {
         </div>
       </div>
 
+      <!-- MRF Price Transparency Section -->
+      {hasMrfData ? (
+        <div class="mb-8">
+          <div class="flex items-start justify-between mb-4">
+            <div>
+              <h2 class="text-2xl font-bold">Published Cash Prices</h2>
+              <p class="text-sm text-[var(--color-muted)] mt-1">
+                From this hospital's Machine-Readable File (MRF) — required under the Hospital Price Transparency Rule (Jan 2021).
+              </p>
+            </div>
+            <a href="/transparency/" class="text-sm text-[var(--color-accent)] hover:underline whitespace-nowrap mt-1">About MRF data &rarr;</a>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-[var(--color-border)]">
+                  <th class="text-left py-3 px-2 font-semibold">CPT Code</th>
+                  <th class="text-left py-3 px-2 font-semibold">Description</th>
+                  <th class="text-right py-3 px-2 font-semibold">Cash / Self-Pay</th>
+                </tr>
+              </thead>
+              <tbody>
+                {mrfPrices.map(p => (
+                  <tr class="border-b border-[var(--color-border)] hover:bg-[var(--color-card)]">
+                    <td class="py-2 px-2 font-mono text-xs text-[var(--color-muted)]">{p.hcpcs_cpt}</td>
+                    <td class="py-2 px-2">
+                      {p.procedure_slug ? (
+                        <a href={`/procedure/${p.procedure_slug}`} class="text-[var(--color-accent)] hover:underline">
+                          {p.procedure_description || p.description || p.hcpcs_cpt}
+                        </a>
+                      ) : (
+                        <span class="text-[var(--color-foreground)]">{p.description || p.hcpcs_cpt}</span>
+                      )}
+                    </td>
+                    <td class="py-2 px-2 text-right font-medium text-emerald-600 dark:text-emerald-400">{fmt(p.standard_charge)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p class="text-xs text-[var(--color-muted)] mt-3">
+            Cash prices sourced from this hospital's published Machine-Readable File. These are the self-pay rates offered to uninsured patients. Actual billed amounts may differ — contact the hospital's billing department for a personalized estimate.
+          </p>
+        </div>
+      ) : (
+        <div class="card mb-8 border-dashed">
+          <div class="flex items-start gap-3">
+            <svg class="w-5 h-5 text-[var(--color-muted)] mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <div>
+              <h3 class="font-semibold mb-1">Price Transparency Data</h3>
+              <p class="text-sm text-[var(--color-muted)]">
+                Under the Hospital Price Transparency Rule (effective Jan 2021), all hospitals must publish machine-readable files with their standard charges including cash/self-pay rates. PlainProcedure is expanding its MRF dataset — check back for published prices from this hospital.
+              </p>
+              <a href="/transparency/" class="text-sm text-[var(--color-accent)] hover:underline mt-2 inline-block">Learn about hospital price transparency &rarr;</a>
+            </div>
+          </div>
+        </div>
+      )}
+
       <!-- Contact -->
       {hospital.phone && (
         <div class="card mb-8">
@@ -100,6 +176,7 @@ function measureLabel(better: number, same: number, worse: number): string {
       <div class="flex flex-wrap gap-4 text-sm">
         <a href={`/hospitals/?state=${hospital.state.toLowerCase()}`} class="text-[var(--color-accent)] hover:underline">&larr; All hospitals in {hospital.state}</a>
         <a href={`/state/${hospital.state}`} class="text-[var(--color-accent)] hover:underline">Procedure costs in {hospital.state} &rarr;</a>
+        <a href="/transparency/" class="text-[var(--color-accent)] hover:underline">Price transparency explained &rarr;</a>
         <a href={`https://plainhospital.com/hospital/${hospital.slug}`} class="text-[var(--color-accent)] hover:underline" target="_blank" rel="noopener">Quality ratings at PlainHospital &rarr;</a>
       </div>
     </div>
