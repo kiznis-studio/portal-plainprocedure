@@ -5,6 +5,7 @@
 // Budget model:
 //   CONTAINER_LIMIT (cgroup)
 //   ├── HEADROOM (10%) — GC spikes, kernel buffers, safety margin
+//   ├── WARMER (128MB) — background warming process (≥512MB containers only)
 //   ├── PRIMARY PROCESS — Node.js base + response cache + query cache
 //   ├── WORKER 0..N — Node.js + Astro + SQLite (page cache + mmap)
 //   └── RESPONSE CACHE — single cache at primary (workers have none)
@@ -14,6 +15,9 @@ import { readFileSync, statSync } from 'node:fs';
 // ─── Constants (measured baselines) ───
 const PRIMARY_BASE_MB = 80;       // Node.js runtime + cluster proxy + mgmt server
 const WORKER_BASE_MB = 80;        // Node.js + Astro SSR framework per worker
+// Warmer process reservation — only for containers ≥512MB (smaller ones skip warming)
+// Actual warmer usage is ~40-60MB (HTTP fetches only), but we budget 128MB for safety.
+// The --max-old-space-size cap in cluster-entry.mjs prevents runaway regardless.
 const HEADROOM_PCT = 0.10;        // 10% safety margin
 const SQLITE_SHARE_PCT = 0.25;    // 25% of usable for all SQLite combined
 const MMAP_SHARE_OF_SQLITE = 0.70;  // 70% of SQLite budget goes to mmap
@@ -64,7 +68,8 @@ export function calculateBudget(options = {}) {
   const limitMB = cgroupLimit ? cgroupLimit / (1024 * 1024) : 512;
 
   const headroomMB = limitMB * HEADROOM_PCT;
-  const usableMB = limitMB - headroomMB;
+  const warmerHeapMB = limitMB >= 512 ? 128 : 0; // Skip warmer for tiny containers
+  const usableMB = limitMB - headroomMB - warmerHeapMB;
 
   // ─── SQLite budgets (scaled to container, shared across all workers) ───
   const sqliteTotalMB = usableMB * SQLITE_SHARE_PCT;
@@ -134,6 +139,7 @@ export function calculateBudget(options = {}) {
   const budget = {
     containerLimitMB: Math.round(limitMB),
     headroomMB: Math.round(headroomMB),
+    warmerHeapMB,
     usableMB: Math.round(usableMB),
     dbSizeMB: Math.round(dbSizeMB),
 
@@ -163,12 +169,16 @@ export function calculateBudget(options = {}) {
 // ─── Format budget as startup log ───
 export function logBudget(budget) {
   const lines = [
-    `[memory-budget] Container: ${budget.containerLimitMB}MB | Usable: ${budget.usableMB}MB (${100 - HEADROOM_PCT * 100}% of limit)`,
+    `[memory-budget] Container: ${budget.containerLimitMB}MB | Usable: ${budget.usableMB}MB (after ${HEADROOM_PCT * 100}% headroom` +
+      (budget.warmerHeapMB > 0 ? ` + ${budget.warmerHeapMB}MB warmer` : '') + ')',
     `[memory-budget] Workers: ${budget.effectiveWorkersMax} max` +
       (budget.workersReduced ? ` (reduced from ${budget.configuredWorkersMax} — not enough memory)` : ''),
     `[memory-budget] SQLite/worker: mmap=${budget.sqliteMmapMB}MB, pcache=${budget.sqliteCacheMB}MB`,
     `[memory-budget] Response cache: ${budget.responseCacheEntries} entries (~${budget.responseCacheMB}MB)`,
     `[memory-budget] Query cache: ${budget.queryCacheMax} max entries (~${budget.queryCacheMB}MB)`,
+    budget.warmerHeapMB > 0
+      ? `[memory-budget] Warmer: ${budget.warmerHeapMB}MB reserved (separate process)`
+      : `[memory-budget] Warmer: disabled (container <512MB)`,
     `[memory-budget] DB: ${budget.dbSizeMB}MB`,
   ];
   for (const line of lines) console.log(line);

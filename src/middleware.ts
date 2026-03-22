@@ -1,9 +1,7 @@
 import { defineMiddleware } from 'astro:middleware';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { gzipSync, gunzipSync } from 'node:zlib';
-import http from 'node:http';
 import { createD1Adapter } from './lib/d1-adapter';
-import { warmQueryCache } from './lib/db';
 
 // --- Sitemap disk cache ---
 // Sitemaps are immutable between deploys (data doesn't change during container lifetime).
@@ -28,7 +26,6 @@ function isSitemapPath(p: string): boolean {
   return (p.includes('sitemap') || p === '/robots.txt') && (p.endsWith('.xml') || p === '/robots.txt');
 }
 
-let sitemapsWarmed = false;
 
 // Container memory awareness — reads cgroup v2 metrics (all workers combined)
 function containerMemoryPct(): number {
@@ -85,107 +82,9 @@ function getRollingMetrics() {
   return { requestRate: rate, avgLatency: avg };
 }
 
-// --- Background batched cache warming ---
-// Only the first cluster worker (CACHE_WARM_WORKER=1) runs proactive warming.
-// Additional workers populate cache lazily from real traffic — no duplicate CPU work.
-// Warming runs in small batches with pauses so CPU stays low and requests are never blocked.
-let cacheWarmed = false;
-let cacheWarmedAt: string | null = null;
-
-const WARM_BATCH = parseInt(process.env.CACHE_WARM_BATCH || '10', 10);
-const WARM_PAUSE = parseInt(process.env.CACHE_WARM_PAUSE || '500', 10);
-const IS_WARM_WORKER = process.env.CACHE_WARM_WORKER !== '0';
-
-function startBackgroundWarming(): void {
-  if (!IS_WARM_WORKER) {
-    cacheWarmed = true;
-    return;
-  }
-  const database = getDb();
-  if (!database) { cacheWarmed = true; return; }
-  (async () => {
-    try {
-      await warmQueryCache(database);
-      cacheWarmedAt = new Date().toISOString();
-    } catch (err) {
-      console.error('[cache] Warming failed:', err);
-    }
-    cacheWarmed = true;
-  })();
-}
-startBackgroundWarming();
-
-// --- Sitemap background warming ---
-// After main cache warms, self-fetch all sitemaps to populate disk cache.
-// Sequential, low priority — does not block request serving.
-function warmSitemaps(): void {
-  if (!IS_WARM_WORKER) return;
-  const port = parseInt(process.env.PORT || '4321');
-
-  function selfFetch(urlPath: string): Promise<string> {
-    return new Promise((resolve) => {
-      const req = http.get({ hostname: '127.0.0.1', port, path: urlPath, timeout: 30000 }, (res) => {
-        let body = '';
-        res.on('data', (c: Buffer) => body += c);
-        res.on('end', () => resolve(body));
-      });
-      req.on('error', () => resolve(''));
-      req.on('timeout', () => { req.destroy(); resolve(''); });
-    });
-  }
-
-  // Wait for main cache warming + a few seconds for the server to settle
-  const checkInterval = setInterval(async () => {
-    if (!cacheWarmed) return;
-    clearInterval(checkInterval);
-
-    try {
-      const indexXml = await selfFetch('/sitemap-index.xml');
-      if (!indexXml.includes('<sitemapindex') && !indexXml.includes('<urlset')) {
-        // No sitemap index — try /sitemap.xml
-        const fallback = await selfFetch('/sitemap.xml');
-        if (fallback.includes('<urlset')) {
-          saveSitemapToDisk('/sitemap.xml', fallback);
-          console.log('[sitemap-cache] Warmed 1 sitemap (sitemap.xml)');
-        }
-        sitemapsWarmed = true;
-        return;
-      }
-
-      saveSitemapToDisk('/sitemap-index.xml', indexXml);
-
-      // Parse child sitemap URLs
-      const locs = [...indexXml.matchAll(/<loc>(.*?)<\/loc>/g)].map(m => {
-        try { return new URL(m[1]).pathname; } catch { return null; }
-      }).filter(Boolean) as string[];
-
-      let warmed = 1; // index already cached
-      for (const loc of locs) {
-        // Memory-aware throttle: gentle slowdown under pressure, never stops
-        const memPct = containerMemoryPct();
-        if (memPct > 0.80) {
-          await new Promise(r => setTimeout(r, 30000)); // 30s — very gentle
-        } else if (memPct > 0.65) {
-          await new Promise(r => setTimeout(r, 5000));  // 5s — moderate
-        }
-        if (getSitemapFromDisk(loc)) { warmed++; continue; } // already cached
-        const xml = await selfFetch(loc);
-        if (xml && xml.length > 50) {
-          saveSitemapToDisk(loc, xml);
-          warmed++;
-        }
-        // Throttle: 2s pause between sitemaps to limit CPU/memory pressure
-        await new Promise(r => setTimeout(r, 2000));
-      }
-      console.log(`[sitemap-cache] Warmed ${warmed} sitemaps to disk`);
-    } catch (err) {
-      console.error('[sitemap-cache] Warming failed:', (err as Error).message);
-    }
-    sitemapsWarmed = true;
-  }, 2000);
-  checkInterval.unref();
-}
-warmSitemaps();
+// Workers are always ready — warming is handled by the warmer process (KIZ-319)
+let cacheWarmed = true;
+let cacheWarmedAt: string | null = new Date().toISOString();
 
 // --- Compressed LRU response cache (disabled in cluster mode — primary handles caching) ---
 interface CacheEntry { compressed: Buffer; contentType: string; cacheControl: string; hits: number; }

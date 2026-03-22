@@ -18,7 +18,8 @@
 
 import cluster from 'node:cluster';
 import http from 'node:http';
-import { writeFileSync } from 'node:fs';
+import { fork } from 'node:child_process';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { gzipSync, gunzipSync } from 'node:zlib';
 
 const MIN_WORKERS = 1;
@@ -32,6 +33,43 @@ if (cluster.isPrimary) {
   // V8 serialization for IPC — natively handles Map, Set, Date, RegExp, ArrayBuffer.
   // Must be called before fork() and only in primary process.
   cluster.setupPrimary({ serialization: 'advanced' });
+
+  // ─── Sentry integration (crash reporting from primary) ───
+  let Sentry = null;
+  const SENTRY_DSN = process.env.SENTRY_DSN || '';
+  if (SENTRY_DSN) {
+    try {
+      Sentry = await import('@sentry/node');
+      Sentry.init({
+        dsn: SENTRY_DSN,
+        environment: 'production',
+        serverName: process.env.PORTAL_NAME || 'unknown-portal',
+        autoSessionTracking: false,
+        tracesSampleRate: 0,
+      });
+      console.log('[sentry] Initialized for crash reporting');
+    } catch (e) {
+      console.warn('[sentry] Failed to initialize:', e.message);
+    }
+  }
+
+  // Rate-limit Sentry events to avoid flooding (max 1 per event type per 60s)
+  const sentryRateLimit = new Map(); // eventType → lastSentTimestamp
+  const SENTRY_RATE_LIMIT_MS = 60000;
+
+  function reportToSentry(eventType, extra = {}) {
+    if (!Sentry) return;
+    const now = Date.now();
+    const lastSent = sentryRateLimit.get(eventType) || 0;
+    if (now - lastSent < SENTRY_RATE_LIMIT_MS) return;
+    sentryRateLimit.set(eventType, now);
+
+    Sentry.captureMessage(`[cluster] ${eventType}`, {
+      level: eventType.includes('crash') || eventType.includes('degraded') || eventType.includes('50') ? 'error' : 'warning',
+      tags: { portal: process.env.PORTAL_NAME || 'unknown', component: 'cluster' },
+      extra,
+    });
+  }
 
   // ─── Memory budget — auto-calculates all allocations from cgroup limit ───
   const { calculateBudget, logBudget } = await import('./memory-budget.mjs');
@@ -195,10 +233,83 @@ if (cluster.isPrimary) {
     }
 
     console.warn(`[cluster] Worker ${worker.process.pid} crashed (${reason}), restarting`);
+    reportToSentry('worker_crash', {
+      pid: worker.process.pid,
+      signal,
+      code,
+      crashCount: recentCrashes.length,
+      workersRemaining: Object.keys(cluster.workers).length,
+    });
+
+    if (Object.keys(cluster.workers).length === 0) {
+      reportToSentry('portal_degraded', {
+        reason: 'All workers crashed',
+        crashCount: recentCrashes.length,
+      });
+    }
+
     if (Object.keys(cluster.workers).length < targetWorkers) {
       forkWorker(false);
     }
   });
+
+  // ─── Background warmer (separate process, capped heap) ───
+  let warmerProcess = null;
+  let warmerCooldown = false;
+  let warmerDone = false; // Set to true after warmer completes — slow response alerts suppressed until then
+  const WARMER_COOLDOWN_MS = 60000; // 1 min cooldown between warmer restarts
+
+  function spawnWarmer() {
+    if (warmerCooldown || warmerProcess) return;
+
+    // Wait for at least 1 worker to be ready
+    if (workerPorts.length === 0) {
+      setTimeout(spawnWarmer, 2000);
+      return;
+    }
+
+    const warmerHeap = Math.min(256, budget.warmerHeapMB || 128);
+    warmerProcess = fork('./warmer.mjs', [], {
+      execArgv: [`--max-old-space-size=${warmerHeap}`],
+      env: {
+        ...process.env,
+        PRIMARY_PORT: String(EXTERNAL_PORT),
+        WARMER_START_DELAY: '5000',
+      },
+      stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
+    });
+
+    warmerProcess.on('message', (msg) => {
+      if (msg.type === 'warm-complete') {
+        console.log('[warmer] Warming completed successfully');
+        warmerDone = true;
+      }
+      if (msg.type === 'warm-failed') {
+        console.error(`[warmer] Failed: ${msg.error}`);
+      }
+    });
+
+    warmerProcess.on('exit', (code) => {
+      warmerProcess = null;
+      if (code !== 0 && code !== null) {
+        console.warn(`[warmer] Crashed (code ${code}), cooldown ${WARMER_COOLDOWN_MS / 1000}s`);
+        reportToSentry('warmer_crash', { exitCode: code });
+        warmerCooldown = true;
+        setTimeout(() => { warmerCooldown = false; }, WARMER_COOLDOWN_MS);
+      }
+    });
+
+    console.log(`[warmer] Spawned PID ${warmerProcess.pid} (${warmerHeap}MB heap cap)`);
+  }
+
+  // Start warmer after a brief delay (let workers init first)
+  // Skip warmer for tiny containers — budget.warmerHeapMB=0 means container <512MB
+  if (budget.warmerHeapMB > 0) {
+    setTimeout(spawnWarmer, 5000);
+  } else {
+    console.log('[warmer] Disabled — container too small for background warming');
+    warmerDone = true; // No warmup phase — slow alerts active immediately
+  }
 
   // ─── Edge TTL (matches middleware.ts) ───
   function getEdgeTtl(p) {
@@ -213,16 +324,31 @@ if (cluster.isPrimary) {
   // ─── Proxy to worker ───
   function proxyToWorker(req, res) {
     if (workerPorts.length === 0) {
+      reportToSentry('proxy_503', { url: req.url, reason: 'no_workers' });
       res.writeHead(503, { 'Content-Type': 'text/plain' });
       res.end('No workers available');
       return;
     }
     const port = workerPorts[nextWorker++ % workerPorts.length];
+    const proxyStart = Date.now();
     const proxyReq = http.request(
       { hostname: '127.0.0.1', port, path: req.url, method: req.method, headers: req.headers },
       (proxyRes) => {
         const ct = proxyRes.headers['content-type'] || '';
         const status = proxyRes.statusCode;
+
+        // Report 5xx errors from workers to Sentry
+        if (status >= 500) {
+          reportToSentry(`worker_${status}`, { url: req.url, workerPort: port });
+        }
+
+        // Report slow responses (>3s) to Sentry — only after warmer completes
+        // Cold pages during warmup are expected and would flood Sentry on every deploy
+        const elapsed = Date.now() - proxyStart;
+        if (warmerDone && elapsed > 3000) {
+          reportToSentry('slow_response', { url: req.url, elapsedMs: elapsed, workerPort: port });
+        }
+
         const cacheable = req.method === 'GET' && status === 200 &&
                           (ct.includes('text/html') || ct.includes('xml'));
 
@@ -252,6 +378,7 @@ if (cluster.isPrimary) {
     );
     proxyReq.on('error', (err) => {
       console.error(`[cluster] Proxy error to :${port}: ${err.message}`);
+      reportToSentry('proxy_502', { url: req.url, workerPort: port, error: err.message });
       if (!res.headersSent) {
         res.writeHead(502, { 'Content-Type': 'text/plain' });
         res.end('Bad Gateway');
@@ -263,6 +390,35 @@ if (cluster.isPrimary) {
   // ─── Primary HTTP server — caching proxy ───
   http.createServer((req, res) => {
     const path = req.url.split('?')[0];
+
+    // /ping: comprehensive external health check (for Kuma monitoring)
+    if (path === '/ping') {
+      const checks = {
+        workers: workerPorts.length > 0 ? 'ok' : 'no_workers',
+        cache: responseCache.size > 0 ? `ok (${responseCache.size} entries)` : 'cold',
+        queryCache: sharedQueryCache.size > 0 ? `ok (${sharedQueryCache.size} entries)` : 'cold',
+        warmer: warmerProcess && !warmerProcess.killed ? 'running' : (warmerDone ? 'done' : 'idle'),
+      };
+
+      try {
+        const max = parseInt(readFileSync('/sys/fs/cgroup/memory.max', 'utf-8').trim());
+        const cur = parseInt(readFileSync('/sys/fs/cgroup/memory.current', 'utf-8').trim());
+        const pct = Math.round(cur / max * 100);
+        checks.memory = pct < 90 ? `ok (${pct}% of ${Math.round(max / 1048576)}MB)` : `warning (${pct}%)`;
+      } catch { checks.memory = 'unknown'; }
+
+      const allOk = checks.workers === 'ok' && !String(checks.memory).startsWith('warning');
+      const status = allOk ? 'healthy' : 'degraded';
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        status,
+        checks,
+        uptime: Math.round(process.uptime()),
+        timestamp: new Date().toISOString(),
+      }));
+      return;
+    }
 
     // Health: primary answers directly when no workers (keeps Docker healthcheck alive)
     if (path === '/health') {
