@@ -1,6 +1,6 @@
 ---
 import Base from '../../layouts/Base.astro';
-import { getProcedureBySlug, getProcedureStatePrices } from '../../lib/db';
+import { getProcedureBySlug, getProcedureStatePrices, getProcedurePricing, getStateProcedurePricingAll } from '../../lib/db';
 
 const db = Astro.locals.runtime.env.DB;
 const { slug } = Astro.params;
@@ -8,6 +8,14 @@ const procedure = await getProcedureBySlug(db, slug!);
 if (!procedure) return Astro.redirect('/404');
 
 const statePrices = await getProcedureStatePrices(db, procedure.code);
+const pricing = await getProcedurePricing(db, procedure.code);
+const statePricingMap = new Map<string, { est_commercial_avg: number | null; est_cash_price: number | null }>();
+if (pricing) {
+  const statePricingRows = await getStateProcedurePricingAll(db, procedure.code);
+  for (const row of statePricingRows) {
+    statePricingMap.set(row.state, { est_commercial_avg: row.est_commercial_avg, est_cash_price: row.est_cash_price });
+  }
+}
 
 function fmt(n: number | null): string {
   if (n == null) return 'N/A';
@@ -126,6 +134,32 @@ const siteUrl = 'https://plainprocedure.com';
         </div>
       )}
 
+      {/* What You Might Pay */}
+      {pricing && pricing.est_commercial_avg && (
+        <div class="mb-8">
+          <h2 class="text-2xl font-bold mb-4">What You Might Pay</h2>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
+            <div class="card">
+              <div class="text-sm text-[var(--color-muted)] mb-1">Est. Commercial Insurance</div>
+              <div class="text-3xl font-bold text-blue-600 dark:text-blue-400">{fmt(pricing.est_commercial_avg)}</div>
+              <div class="text-xs text-[var(--color-muted)] mt-1">Range: {fmt(pricing.est_commercial_low)} – {fmt(pricing.est_commercial_high)}</div>
+            </div>
+            <div class="card">
+              <div class="text-sm text-[var(--color-muted)] mb-1">Est. Cash / Self-Pay</div>
+              <div class="text-3xl font-bold text-emerald-600 dark:text-emerald-400">{fmt(pricing.est_cash_price)}</div>
+              <div class="text-xs text-[var(--color-muted)] mt-1">Typical self-pay discount</div>
+            </div>
+          </div>
+          <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">Estimated using RAND 2024 commercial-to-Medicare ratios. Actual prices vary by insurer, plan, and facility.</p>
+          <details class="text-sm text-gray-500 dark:text-gray-400">
+            <summary class="cursor-pointer hover:text-[var(--color-accent)]">How we estimate these prices</summary>
+            <div class="mt-2 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg text-xs leading-relaxed">
+              <p>These estimates are based on the <strong>RAND Hospital Price Transparency Study</strong> (4th Edition, 2024), which found that commercial insurance prices average 224% of Medicare rates nationally. We apply category-specific ratios: <strong>{procedure.category}</strong> procedures average <strong>{pricing.commercial_to_medicare}x</strong> Medicare rates. Cash/self-pay estimates blend typical cash discounts (55% of billed charges) with Medicare-based estimates (150% of allowed amounts). These are statistical estimates, not quotes. Contact your insurer or provider for actual costs.</p>
+            </div>
+          </details>
+        </div>
+      )}
+
       <!-- State-by-State Prices -->
       {statePrices.length > 0 && (
         <div class="mb-8">
@@ -139,6 +173,8 @@ const siteUrl = 'https://plainprocedure.com';
                   <th class="text-right py-3 px-2 font-semibold">Billed Charge</th>
                   <th class="text-right py-3 px-2 font-semibold hidden sm:table-cell">Min</th>
                   <th class="text-right py-3 px-2 font-semibold hidden sm:table-cell">Max</th>
+                  <th class="text-right py-3 px-2 font-semibold hidden md:table-cell">Est. Commercial</th>
+                  <th class="text-right py-3 px-2 font-semibold hidden md:table-cell">Est. Cash</th>
                   <th class="text-right py-3 px-2 font-semibold hidden md:table-cell">Providers</th>
                   <th class="text-right py-3 px-2 font-semibold hidden md:table-cell">Services</th>
                 </tr>
@@ -161,6 +197,15 @@ const siteUrl = 'https://plainprocedure.com';
                       <td class="py-2 px-2 text-right text-[var(--color-muted)]">{fmt(sp.avg_submitted_charge)}</td>
                       <td class="py-2 px-2 text-right hidden sm:table-cell text-[var(--color-muted)]">{fmt(sp.min_payment)}</td>
                       <td class="py-2 px-2 text-right hidden sm:table-cell text-[var(--color-muted)]">{fmt(sp.max_payment)}</td>
+                      {(() => {
+                        const sp_pricing = statePricingMap.get(sp.state);
+                        return (
+                          <>
+                            <td class="py-2 px-2 text-right hidden md:table-cell text-blue-600 dark:text-blue-400">{sp_pricing ? fmt(sp_pricing.est_commercial_avg) : 'N/A'}</td>
+                            <td class="py-2 px-2 text-right hidden md:table-cell text-emerald-600 dark:text-emerald-400">{sp_pricing ? fmt(sp_pricing.est_cash_price) : 'N/A'}</td>
+                          </>
+                        );
+                      })()}
                       <td class="py-2 px-2 text-right hidden md:table-cell text-[var(--color-muted)]">{fmtCompact(sp.provider_count)}</td>
                       <td class="py-2 px-2 text-right hidden md:table-cell text-[var(--color-muted)]">{fmtCompact(sp.total_services)}</td>
                     </tr>
@@ -190,6 +235,15 @@ const siteUrl = 'https://plainprocedure.com';
             </summary>
             <p class="mt-2 text-sm text-[var(--color-muted)]">Providers set their own chargemaster rates (billed charges), which are typically much higher than what any insurer pays. Medicare pays a fixed rate based on the procedure code and geographic location. The billed charge is relevant mainly for uninsured patients, who may face prices closer to the submitted charge.</p>
           </details>
+          {pricing && pricing.est_commercial_avg && (
+            <details class="group py-4">
+              <summary class="flex cursor-pointer items-center justify-between font-medium [&::-webkit-details-marker]:hidden list-none">
+                How much does {title} cost with insurance?
+                <svg class="h-5 w-5 shrink-0 text-[var(--color-muted)] transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
+              </summary>
+              <p class="mt-2 text-sm text-[var(--color-muted)]">With commercial insurance, {title} costs an estimated {fmt(pricing.est_commercial_avg)} on average (range: {fmt(pricing.est_commercial_low)} – {fmt(pricing.est_commercial_high)}). Without insurance, the estimated cash price is {fmt(pricing.est_cash_price)}. These estimates are based on RAND 2024 research on commercial-to-Medicare price ratios. Your actual cost depends on your insurer, plan, and provider.</p>
+            </details>
+          )}
         </div>
       </div>
       <script type="application/ld+json" set:html={JSON.stringify({
@@ -197,7 +251,8 @@ const siteUrl = 'https://plainprocedure.com';
         "@type": "FAQPage",
         "mainEntity": [
           { "@type": "Question", "name": `How much does ${title} cost?`, "acceptedAnswer": { "@type": "Answer", "text": `The national average Medicare payment for ${title} (CPT ${procedure.code}) is ${fmt(procedure.national_avg_medicare_payment)}, while providers typically bill ${fmt(procedure.national_avg_submitted_charge)}.` } },
-          { "@type": "Question", "name": "Why do providers charge more than Medicare pays?", "acceptedAnswer": { "@type": "Answer", "text": "Providers set their own chargemaster rates which are typically much higher than what any insurer pays. Medicare pays a fixed rate based on the procedure code and geographic location." } }
+          { "@type": "Question", "name": "Why do providers charge more than Medicare pays?", "acceptedAnswer": { "@type": "Answer", "text": "Providers set their own chargemaster rates which are typically much higher than what any insurer pays. Medicare pays a fixed rate based on the procedure code and geographic location." } },
+          ...(pricing?.est_commercial_avg ? [{ "@type": "Question", "name": `How much does ${title} cost with insurance?`, "acceptedAnswer": { "@type": "Answer", "text": `With commercial insurance, ${title} costs an estimated ${fmt(pricing.est_commercial_avg)} on average. Without insurance, the estimated cash price is ${fmt(pricing.est_cash_price)}.` } }] : [])
         ]
       })} />
 
