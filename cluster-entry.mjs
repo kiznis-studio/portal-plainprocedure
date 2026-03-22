@@ -22,6 +22,10 @@ import { fork } from 'node:child_process';
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { gzipSync, gunzipSync } from 'node:zlib';
 
+// Derive portal name: PORTAL_NAME env > hostname (container_name = portal-slug) > 'unknown'
+import os from 'node:os';
+const PORTAL_NAME = process.env.PORTAL_NAME || os.hostname().replace(/^portal-/, '') || 'unknown';
+
 const MIN_WORKERS = 1;
 const CONFIGURED_MAX_WORKERS = parseInt(process.env.WORKERS_MAX || '4', 10);
 const EXTERNAL_PORT = parseInt(process.env.PORT || '4321', 10);
@@ -43,7 +47,7 @@ if (cluster.isPrimary) {
       Sentry.init({
         dsn: SENTRY_DSN,
         environment: 'production',
-        serverName: process.env.PORTAL_NAME || 'unknown-portal',
+        serverName: PORTAL_NAME,
         autoSessionTracking: false,
         tracesSampleRate: 0,
       });
@@ -66,7 +70,7 @@ if (cluster.isPrimary) {
 
     Sentry.captureMessage(`[cluster] ${eventType}`, {
       level: eventType.includes('crash') || eventType.includes('degraded') || eventType.includes('50') ? 'error' : 'warning',
-      tags: { portal: process.env.PORTAL_NAME || 'unknown', component: 'cluster' },
+      tags: { portal: PORTAL_NAME, component: 'cluster' },
       extra,
     });
   }
@@ -433,7 +437,7 @@ if (cluster.isPrimary) {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
         status,
-        portal: process.env.PORTAL_NAME || 'unknown',
+        portal: PORTAL_NAME,
         checks,
         uptime: Math.round(process.uptime()),
         timestamp: new Date().toISOString(),
