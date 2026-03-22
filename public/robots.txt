@@ -1,20 +1,58 @@
-# Robots.txt for PlainProcedure
-
+# plainprocedure — All crawlers welcome
 User-agent: *
 Allow: /
 
-# Sitemaps
 Sitemap: https://plainprocedure.com/sitemap-index.xml
 
-# AI Crawlers - Welcome
+# Search Engine Crawlers
+User-agent: Googlebot
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
+User-agent: Applebot
+Allow: /
+
+# AI Search & Citation Bots
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
 User-agent: GPTBot
 Allow: /
 
-User-agent: Claude-Web
+User-agent: Claude-SearchBot
 Allow: /
 
-User-agent: Anthropic-AI
+User-agent: Claude-User
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Perplexity-User
+Allow: /
+
+User-agent: DuckAssistBot
+Allow: /
+
+User-agent: Amazonbot
+Allow: /
+
+User-agent: Meta-ExternalAgent
+Allow: /
+
+User-agent: CCBot
 Allow: /
 
 User-agent: Google-Extended
+Allow: /
+
+User-agent: MistralAI-User
 Allow: /
