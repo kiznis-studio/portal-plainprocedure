@@ -39,7 +39,7 @@ const breadcrumbSchema = (() => {
       '@type': 'ListItem',
       position: i + 1,
       name: item.name,
-      ...(item.href ? { item: new URL(item.href, siteUrl).href } : {}),
+      item: item.href ? new URL(item.href, siteUrl).href : new URL(Astro.url.pathname, siteUrl).href,
     })),
   });
 })();
