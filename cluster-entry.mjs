@@ -57,6 +57,10 @@ if (cluster.isPrimary) {
     }
   }
 
+  // ─── Sentry alerting thresholds ───
+  const SENTRY_SLOW_MS = parseInt(process.env.SENTRY_SLOW_MS || '2000', 10);
+  const PROXY_TIMEOUT_MS = parseInt(process.env.PROXY_TIMEOUT_MS || '15000', 10);
+
   // Rate-limit Sentry events to avoid flooding (max 1 per event type per 60s)
   const sentryRateLimit = new Map(); // eventType → lastSentTimestamp
   const SENTRY_RATE_LIMIT_MS = 60000;
@@ -68,8 +72,11 @@ if (cluster.isPrimary) {
     if (now - lastSent < SENTRY_RATE_LIMIT_MS) return;
     sentryRateLimit.set(eventType, now);
 
+    const isError = eventType.includes('crash') || eventType.includes('degraded') ||
+                    eventType.includes('50') || eventType.includes('timeout') ||
+                    eventType === 'crash_throttle';
     Sentry.captureMessage(`[cluster] ${eventType}`, {
-      level: eventType.includes('crash') || eventType.includes('degraded') || eventType.includes('50') ? 'error' : 'warning',
+      level: isError ? 'error' : 'warning',
       tags: { portal: PORTAL_NAME, component: 'cluster' },
       extra,
     });
@@ -224,6 +231,12 @@ if (cluster.isPrimary) {
     const reason = signal || `code ${code}`;
     if (recentCrashes.length >= MAX_CRASHES) {
       console.warn(`[cluster] Worker ${worker.process.pid} crashed (${reason}) — ${recentCrashes.length} crashes in 60s, backing off ${BACKOFF_MS / 1000}s`);
+      reportToSentry('crash_throttle', {
+        crashCount: recentCrashes.length,
+        window: '60s',
+        backoffMs: BACKOFF_MS,
+        workersRemaining: Object.keys(cluster.workers).length,
+      });
       if (!backoffTimer) {
         backoffTimer = setTimeout(() => {
           backoffTimer = null;
@@ -335,6 +348,7 @@ if (cluster.isPrimary) {
     }
     const port = workerPorts[nextWorker++ % workerPorts.length];
     const proxyStart = Date.now();
+    let timedOut = false;
     const proxyReq = http.request(
       { hostname: '127.0.0.1', port, path: req.url, method: req.method, headers: req.headers },
       (proxyRes) => {
@@ -346,11 +360,12 @@ if (cluster.isPrimary) {
           reportToSentry(`worker_${status}`, { url: req.url, workerPort: port });
         }
 
-        // Report slow responses (>3s) to Sentry — only after warmer completes
+        // Report slow responses to Sentry — only after warmer completes
         // Cold pages during warmup are expected and would flood Sentry on every deploy
+        // Threshold: 2s default (Googlebot reduces crawl rate above ~2s)
         const elapsed = Date.now() - proxyStart;
-        if (warmerDone && elapsed > 3000) {
-          reportToSentry('slow_response', { url: req.url, elapsedMs: elapsed, workerPort: port });
+        if (warmerDone && elapsed > SENTRY_SLOW_MS) {
+          reportToSentry('slow_response', { url: req.url, elapsedMs: elapsed, workerPort: port, thresholdMs: SENTRY_SLOW_MS });
         }
 
         const cacheable = req.method === 'GET' && status === 200 &&
@@ -380,7 +395,22 @@ if (cluster.isPrimary) {
         }
       }
     );
+
+    // Timeout: kill hung proxy requests — worker may be deadlocked or stuck on slow query
+    proxyReq.setTimeout(PROXY_TIMEOUT_MS, () => {
+      timedOut = true;
+      proxyReq.destroy();
+      const elapsed = Date.now() - proxyStart;
+      console.error(`[cluster] Proxy timeout (${PROXY_TIMEOUT_MS}ms) to :${port} for ${req.url}`);
+      reportToSentry('proxy_timeout', { url: req.url, workerPort: port, elapsedMs: elapsed, timeoutMs: PROXY_TIMEOUT_MS });
+      if (!res.headersSent) {
+        res.writeHead(504, { 'Content-Type': 'text/plain' });
+        res.end('Gateway Timeout');
+      }
+    });
+
     proxyReq.on('error', (err) => {
+      if (timedOut) return; // already handled by timeout
       console.error(`[cluster] Proxy error to :${port}: ${err.message}`);
       reportToSentry('proxy_502', { url: req.url, workerPort: port, error: err.message });
       if (!res.headersSent) {
@@ -393,6 +423,7 @@ if (cluster.isPrimary) {
 
   // ─── Primary HTTP server — caching proxy ───
   http.createServer((req, res) => {
+   try {
     const path = req.url.split('?')[0];
 
     // /ping: comprehensive external health check (for Kuma monitoring)
@@ -477,6 +508,14 @@ if (cluster.isPrimary) {
     }
 
     proxyToWorker(req, res);
+   } catch (err) {
+    console.error(`[cluster] Primary handler error: ${err.message}`);
+    reportToSentry('primary_error', { url: req.url, error: err.message, stack: err.stack });
+    if (!res.headersSent) {
+      res.writeHead(500, { 'Content-Type': 'text/plain' });
+      res.end('Internal Server Error');
+    }
+   }
   }).listen(EXTERNAL_PORT, HOST, () => {
     console.log(`[cluster] Caching proxy on :${EXTERNAL_PORT} (cache=${MAX_CACHE} entries, qcache=${QUERY_CACHE_MAX} max)`);
   });
