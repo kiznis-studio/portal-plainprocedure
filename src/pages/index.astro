@@ -302,4 +302,16 @@ const siteDescription = "Healthcare procedure costs in plain English. Compare Me
       "query-input": "required name=search_term_string"
     }
   })} />
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "Dataset",
+    "name": "US Healthcare Procedure Cost Data",
+    "description": "US Healthcare Procedure Cost Data — free public data from CMS Medicare Utilization.",
+    "creator": { "@type": "Organization", "name": "PlainProcedure" },
+    "spatialCoverage": "United States",
+    "temporalCoverage": "2023",
+    "dateModified": "2026-03-23",
+    "license": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "isAccessibleForFree": true
+  })} />
 </Base>
