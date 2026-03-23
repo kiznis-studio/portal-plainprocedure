@@ -14,7 +14,24 @@ Allow: /
 User-agent: Applebot
 Allow: /
 
-# AI Search & Citation Bots
+User-agent: Yandex
+Allow: /
+
+# Google Ads Crawlers (critical for AdSense approval)
+User-agent: AdsBot-Google
+Allow: /
+
+User-agent: AdsBot-Google-Mobile
+Allow: /
+
+User-agent: Mediapartners-Google
+Allow: /
+
+# Google AI (Gemini grounding + AI Overviews)
+User-agent: Google-Extended
+Allow: /
+
+# OpenAI / ChatGPT
 User-agent: ChatGPT-User
 Allow: /
 
@@ -24,35 +41,61 @@ Allow: /
 User-agent: GPTBot
 Allow: /
 
-User-agent: Claude-SearchBot
+# Anthropic / Claude
+User-agent: ClaudeBot
 Allow: /
+Crawl-delay: 2
 
 User-agent: Claude-User
 Allow: /
 
-User-agent: ClaudeBot
+User-agent: Claude-SearchBot
 Allow: /
 
+# xAI / Grok
+User-agent: GrokBot
+Allow: /
+
+User-agent: xAI
+Allow: /
+
+User-agent: Grok
+Allow: /
+
+User-agent: Grok-DeepSearch
+Allow: /
+
+# Perplexity
 User-agent: PerplexityBot
 Allow: /
 
 User-agent: Perplexity-User
 Allow: /
 
+# Apple Intelligence
+User-agent: Applebot-Extended
+Allow: /
+
+# DuckDuckGo AI
 User-agent: DuckAssistBot
 Allow: /
 
+# Amazon
 User-agent: Amazonbot
 Allow: /
 
+# Meta AI
 User-agent: Meta-ExternalAgent
 Allow: /
 
-User-agent: CCBot
+# Cohere
+User-agent: cohere-ai
 Allow: /
 
-User-agent: Google-Extended
-Allow: /
-
+# Mistral
 User-agent: MistralAI-User
+Allow: /
+
+# Common Crawl (feeds many AI systems)
+User-agent: CCBot
 Allow: /
