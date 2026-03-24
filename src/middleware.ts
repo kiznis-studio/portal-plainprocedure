@@ -4,6 +4,7 @@
 import { defineMiddleware } from 'astro:middleware';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import http from 'node:http';
+import * as Sentry from '@sentry/astro';
 import { createD1Adapter, getAdaptiveCacheStats } from './lib/d1-adapter';
 import type { D1Database } from './lib/d1-adapter';
 
@@ -204,6 +205,39 @@ warmSitemaps();
 
 export { inflight, eventLoopLag, cacheWarmed, cacheWarmedAt, getRollingMetrics, getAdaptiveCacheStats };
 
+// --- Sentry error context ---
+// Gathers container + portal info so every Sentry issue has enough context to debug immediately.
+function getSentryContext(path: string, method: string, elapsed?: number) {
+  const memPct = containerMemoryPct();
+  let limitMB = 0;
+  let currentMB = 0;
+  try {
+    limitMB = Math.round(parseInt(readFileSync('/sys/fs/cgroup/memory.max', 'utf-8').trim()) / 1024 / 1024);
+    currentMB = Math.round(parseInt(readFileSync('/sys/fs/cgroup/memory.current', 'utf-8').trim()) / 1024 / 1024);
+  } catch {}
+  return {
+    extra: {
+      path,
+      method,
+      fullUrl: undefined as string | undefined,
+      elapsed: elapsed ? Math.round(elapsed) : undefined,
+      memoryPct: Math.round(memPct * 100),
+      memoryMB: `${currentMB}/${limitMB}`,
+      heapUsedMB: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+      rssMB: Math.round(process.memoryUsage().rss / 1024 / 1024),
+      inflight,
+      eventLoopLagMs: Math.round(eventLoopLag * 100) / 100,
+      nodeVersion: process.version,
+      databases: Object.keys(DB_PATHS).join(', '),
+      cacheWarmed,
+    },
+    tags: {
+      route: path.split('/').slice(0, 3).join('/'),
+      method,
+    },
+  };
+}
+
 // --- Edge TTL ---
 // Portal data is static between DB updates. All pages get long edge TTL by default.
 // Only pages with query parameters (search, filters) get shorter TTL since the
@@ -242,6 +276,18 @@ export const onRequest = defineMiddleware(async (context, next) => {
       recordRequest(elapsed);
       if (elapsed > 500) console.warn(`[slow] ${path} ${Math.round(elapsed)}ms lag=${Math.round(eventLoopLag)}ms`);
 
+      // Capture server errors (5xx) — Astro returns a Response even on render failures,
+      // so @sentry/astro middleware may not see them as exceptions. Explicitly report.
+      if (response.status >= 500) {
+        const ctx = getSentryContext(path, 'GET', elapsed);
+        (ctx.extra as any).status = response.status;
+        (ctx.extra as any).fullUrl = context.url.href;
+        Sentry.captureMessage(`Server error ${response.status} on ${path}`, {
+          level: 'error',
+          ...ctx,
+        });
+      }
+
       if (response.status === 200) {
         const ct = response.headers.get('content-type') || '';
         if (ct.includes('text/html') || ct.includes('xml')) {
@@ -260,10 +306,26 @@ export const onRequest = defineMiddleware(async (context, next) => {
         }
       }
       return response;
+    } catch (err) {
+      // Catch rendering exceptions (OG routes, API routes, page render failures)
+      // that Astro's router would otherwise swallow before @sentry/astro sees them.
+      const ctx = getSentryContext(path, 'GET');
+      (ctx.extra as any).fullUrl = context.url.href;
+      (ctx.extra as any).userAgent = context.request.headers.get('user-agent') || 'unknown';
+      Sentry.captureException(err, ctx);
+      throw err;
     } finally {
       inflight--;
     }
   }
 
-  return next();
+  // Non-GET requests — also capture errors
+  try {
+    return await next();
+  } catch (err) {
+    const ctx = getSentryContext(path, context.request.method);
+    (ctx.extra as any).fullUrl = context.url.href;
+    Sentry.captureException(err, ctx);
+    throw err;
+  }
 });
