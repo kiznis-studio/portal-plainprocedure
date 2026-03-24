@@ -6,7 +6,7 @@ export const prerender = false;
 const siteUrl = 'https://plainprocedure.com';
 
 export const GET: APIRoute = async ({ locals }) => {
-  const db = locals.runtime.env.DB;
+  const db = (locals as any).runtime?.env?.DB;
   const slugs = await getAllHospitalSlugs(db);
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
