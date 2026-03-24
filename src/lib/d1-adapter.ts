@@ -121,38 +121,18 @@ function makeParamsHash(params: unknown[]): string {
 
 // ─── Adaptive cache client ───
 const promotedFingerprints = new Set<string>();
-const pendingIpcCallbacks = new Map<string, { resolve: (v: unknown) => void; timer: ReturnType<typeof setTimeout> }>();
 
-// Listen for messages from primary
+// Listen for promotion broadcasts from primary
 if (process.send) {
   process.on('message', (msg: any) => {
     if (msg?.type === 'adaptive-promoted') {
       promotedFingerprints.clear();
       for (const fp of msg.fingerprints) promotedFingerprints.add(fp);
     }
-    if (msg?.type === 'qcache-result') {
-      const pending = pendingIpcCallbacks.get(msg.key);
-      if (pending) {
-        clearTimeout(pending.timer);
-        pendingIpcCallbacks.delete(msg.key);
-        pending.resolve(msg.hit ? msg.value : null);
-      }
-    }
   });
 }
 
-function adaptiveGet(key: string): Promise<unknown | null> {
-  return new Promise((resolve) => {
-    if (!process.send) { resolve(null); return; }
-    const timer = setTimeout(() => {
-      pendingIpcCallbacks.delete(key);
-      resolve(null); // timeout — fall through to DB
-    }, 50);
-    pendingIpcCallbacks.set(key, { resolve, timer });
-    process.send!({ type: 'qcache-get', key });
-  });
-}
-
+// Fire-and-forget: send cache entries to primary for sharing across workers
 function adaptiveSet(key: string, value: unknown) {
   process.send?.({ type: 'qcache-set', key, value });
 }
