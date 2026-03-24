@@ -329,6 +329,10 @@ export function getProcedureStateSlugs(db: D1Database): Promise<Array<{ slug: st
 
 // --- Cache Warming ---
 export async function warmQueryCache(db: D1Database): Promise<void> {
+  // T19: Pre-load from disk cache (survives worker restarts)
+  const diskLoaded = warmFromDisk(queryCache);
+  if (diskLoaded > 0) console.log(`[cache] Loaded ${diskLoaded} entries from disk`);
+
   console.log('[cache] Starting query cache warming...');
   const start = Date.now();
 
@@ -347,6 +351,8 @@ export async function warmQueryCache(db: D1Database): Promise<void> {
 
   const elapsed = Date.now() - start;
   console.log(`[cache] Warming complete: ${queryCache.size} entries in ${elapsed}ms`);
+  // T19: Persist to disk for instant recovery on worker restart
+  persistToDisk(queryCache);
 }
 
 // --- Hospital Price Transparency ---
