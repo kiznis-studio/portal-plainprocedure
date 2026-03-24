@@ -29,9 +29,10 @@ export interface D1Database {
   prepare(sql: string): D1PreparedStatement;
 }
 
-// Convert D1 numbered params (?1, ?2) to unnamed (?) for better-sqlite3
+// better-sqlite3 natively supports numbered params (?1, ?2) — no conversion needed.
+// Previous normalization (?N → ?) broke queries reusing the same param (e.g. ?1 twice).
 function normalizeParams(sql: string): string {
-  return sql.replace(/\?(\d+)/g, '?');
+  return sql;
 }
 
 // Exported metadata for health endpoint
