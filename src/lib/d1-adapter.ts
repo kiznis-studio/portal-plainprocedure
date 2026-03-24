@@ -31,8 +31,8 @@ export interface D1Database {
 
 // Convert D1 numbered params (?1, ?2) to unnamed (?) for better-sqlite3,
 // and return a mapping so bind args can be expanded for reused params.
-// E.g. "WHERE a = ?1 OR b = ?1 LIMIT ?2" -> sql "WHERE a = ? OR b = ? LIMIT ?"
-//      indices [1, 1, 2] -> bind(x, y) expands to [x, x, y]
+// E.g. "WHERE a = ?1 OR b = ?1 LIMIT ?2" → sql "WHERE a = ? OR b = ? LIMIT ?"
+//      indices [1, 1, 2] → bind(x, y) expands to [x, x, y]
 function normalizeParams(sql: string): { sql: string; indices: number[] } {
   const indices: number[] = [];
   const normalized = sql.replace(/\?(\d+)/g, (_m, num) => {
@@ -43,8 +43,8 @@ function normalizeParams(sql: string): { sql: string; indices: number[] } {
 }
 
 function expandParams(params: unknown[], indices: number[]): unknown[] {
-  if (indices.length === 0) return params; // plain ? params -- no expansion
-  return indices.map(i => params[i - 1]); // ?1 -> params[0], ?2 -> params[1], etc.
+  if (indices.length === 0) return params; // plain ? params — no expansion
+  return indices.map(i => params[i - 1]); // ?1 → params[0], ?2 → params[1], etc.
 }
 
 // Exported metadata for health endpoint
@@ -60,6 +60,9 @@ interface QueryStat {
 const queryStats = new Map<string, QueryStat>();
 let statsReportInterval: ReturnType<typeof setInterval> | null = null;
 
+// Slow query threshold — queries above this are reported to primary for Sentry alerting
+const SLOW_QUERY_MS = 1000;
+
 function trackQuery(fp: string, ph: string, ms: number) {
   const stat = queryStats.get(fp);
   if (stat) {
@@ -68,6 +71,16 @@ function trackQuery(fp: string, ph: string, ms: number) {
     stat.paramVariants.add(ph);
   } else {
     queryStats.set(fp, { calls: 1, totalMs: ms, paramVariants: new Set([ph]) });
+  }
+
+  // Report slow queries to primary for Sentry alerting
+  if (ms > SLOW_QUERY_MS && process.send) {
+    process.send({
+      type: 'slow-query',
+      fingerprint: fp.substring(0, 100),
+      params: ph.substring(0, 50),
+      ms: Math.round(ms),
+    });
   }
 }
 

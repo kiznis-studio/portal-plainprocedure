@@ -1,12 +1,15 @@
 /**
- * warmer.mjs — Background cache warming process (KIZ-319)
+ * warmer.mjs — Background cache warming process
  *
  * Spawned by primary via child_process.fork() with capped heap (--max-old-space-size=256).
- * Warms caches by pre-fetching pages through the primary HTTP server, which routes to
- * workers. Workers compute queries → disk-cache.ts persists results → all workers benefit.
+ * Warms caches by pre-fetching pages through the primary HTTP server.
  *
- * This process is EXPENDABLE — if it crashes, workers keep serving (cold cache).
- * The primary auto-restarts it after a cooldown.
+ * Reports detailed results to primary via IPC:
+ *   warm-complete: { pagesWarmed, sitemapsWarmed, sitemapsTotal, failedSitemaps }
+ *   warm-failed: { error, pagesWarmed, sitemapsWarmed }
+ *   warm-timeout: { pagesWarmed, sitemapsWarmed, sitemapsTotal, memoryPct }
+ *
+ * Primary raises Sentry alerts for failures/timeouts.
  */
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
@@ -16,6 +19,8 @@ const PRIMARY_PORT = parseInt(process.env.PRIMARY_PORT || '4321', 10);
 const SITEMAP_CACHE_DIR = '/tmp/sitemap-cache';
 let pagesWarmed = 0;
 let sitemapsWarmed = 0;
+let sitemapsTotal = 0;
+const failedSitemaps = [];
 
 try { mkdirSync(SITEMAP_CACHE_DIR, { recursive: true }); } catch {}
 
@@ -32,18 +37,18 @@ function shouldPause() {
   const pct = containerMemoryPct();
   if (pct > 0.90) return 30000; // 30s — critical, near OOM
   if (pct > 0.85) return 5000;  // 5s — elevated
-  return 0;                     // below 85% — proceed normally
+  return 0;                     // below 85% — proceed
 }
 
 // ─── Page pre-fetch warming ───
 async function warmPages() {
   console.log('[warmer] Starting page pre-fetch warming...');
 
-  // Priority 1: Homepage (most important, warms global queries)
+  // Priority 1: Homepage
   await fetchWithRetry('/');
   pagesWarmed++;
 
-  // Priority 2: Listing pages (warm state/category queries)
+  // Priority 2: Listing pages
   for (const page of ['/states', '/rankings', '/search', '/guides']) {
     const pause = shouldPause();
     if (pause > 0) {
@@ -52,14 +57,24 @@ async function warmPages() {
     }
     await fetchWithRetry(page);
     pagesWarmed++;
-    await sleep(1000); // 1s between pages
+    await sleep(1000);
   }
 
-  // Priority 3: Sitemaps (crawlers need these)
+  // Priority 3: Sitemaps
   await warmSitemaps();
 
-  console.log('[warmer] Warming complete');
-  process.send?.({ type: 'warm-complete' });
+  const allSitemapsOk = failedSitemaps.length === 0 && sitemapsWarmed > 0;
+
+  console.log(`[warmer] Complete: ${pagesWarmed} pages, ${sitemapsWarmed}/${sitemapsTotal} sitemaps${failedSitemaps.length > 0 ? ` (${failedSitemaps.length} FAILED)` : ''}`);
+
+  process.send?.({
+    type: 'warm-complete',
+    pagesWarmed,
+    sitemapsWarmed,
+    sitemapsTotal,
+    failedSitemaps: failedSitemaps.slice(0, 10), // cap to avoid huge IPC message
+    allSitemapsOk,
+  });
 }
 
 // ─── Sitemap warming ───
@@ -71,7 +86,13 @@ async function warmSitemaps() {
       const fallback = await fetchPage('/sitemap.xml');
       if (fallback && fallback.includes('<urlset')) {
         saveSitemap('/sitemap.xml', fallback);
-        console.log('[warmer] Warmed 1 sitemap');
+        sitemapsWarmed = 1;
+        sitemapsTotal = 1;
+        console.log('[warmer] Warmed 1 sitemap (single file)');
+      } else {
+        // No sitemap at all — this is a problem
+        failedSitemaps.push('/sitemap-index.xml (not found)');
+        console.error('[warmer] No sitemap found at /sitemap-index.xml or /sitemap.xml');
       }
       return;
     }
@@ -83,7 +104,9 @@ async function warmSitemaps() {
       .map(m => { try { return new URL(m[1]).pathname; } catch { return null; } })
       .filter(Boolean);
 
+    sitemapsTotal = locs.length + 1; // +1 for the index itself
     let warmed = 1;
+
     for (const loc of locs) {
       const pause = shouldPause();
       if (pause > 0) {
@@ -91,16 +114,22 @@ async function warmSitemaps() {
         await sleep(pause);
       }
       if (existsSitemap(loc)) { warmed++; continue; }
+
       const xml = await fetchPage(loc);
       if (xml && xml.length > 50) {
         saveSitemap(loc, xml);
         warmed++;
+      } else {
+        failedSitemaps.push(loc);
+        console.warn(`[warmer] Sitemap FAILED: ${loc} (${xml ? xml.length + ' bytes' : 'empty/error'})`);
       }
-      await sleep(2000); // 2s between sitemaps
+      await sleep(2000);
     }
+
     sitemapsWarmed = warmed;
-    console.log(`[warmer] Warmed ${warmed} sitemaps to disk`);
+    console.log(`[warmer] Warmed ${warmed}/${sitemapsTotal} sitemaps to disk${failedSitemaps.length > 0 ? ` — ${failedSitemaps.length} FAILED` : ''}`);
   } catch (err) {
+    failedSitemaps.push(`exception: ${err.message}`);
     console.error('[warmer] Sitemap warming failed:', err.message);
   }
 }
@@ -147,7 +176,6 @@ function sleep(ms) {
 }
 
 // ─── Main ───
-// Wait for workers to be ready before warming
 const startDelay = parseInt(process.env.WARMER_START_DELAY || '10000', 10);
 console.log(`[warmer] PID ${process.pid} starting in ${startDelay / 1000}s (waiting for workers)`);
 
@@ -156,14 +184,27 @@ setTimeout(async () => {
     await warmPages();
   } catch (err) {
     console.error('[warmer] Fatal error:', err.message);
-    process.send?.({ type: 'warm-failed', error: err.message });
+    process.send?.({
+      type: 'warm-failed',
+      error: err.message,
+      pagesWarmed,
+      sitemapsWarmed,
+    });
   }
-  // Exit cleanly after warming — primary will not restart unless crash (non-zero exit)
   process.exit(0);
 }, startDelay);
 
-// Safety timeout — kill if warming takes too long
+// Safety timeout — report what was achieved before exit
 setTimeout(() => {
-  console.log(`[warmer] Timeout (10 min) — warmed ${pagesWarmed} pages, ${sitemapsWarmed} sitemaps before exit`);
+  const memPct = Math.round(containerMemoryPct() * 100);
+  console.log(`[warmer] Timeout (10 min) — warmed ${pagesWarmed} pages, ${sitemapsWarmed}/${sitemapsTotal} sitemaps (memory: ${memPct}%)`);
+  process.send?.({
+    type: 'warm-timeout',
+    pagesWarmed,
+    sitemapsWarmed,
+    sitemapsTotal,
+    failedSitemaps: failedSitemaps.slice(0, 10),
+    memoryPct: memPct,
+  });
   process.exit(0);
 }, 600000);

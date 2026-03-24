@@ -192,6 +192,15 @@ if (cluster.isPrimary) {
     if (msg.type === 'query-stats-batch') {
       mergeQueryStats(msg.stats);
     }
+
+    if (msg.type === 'slow-query') {
+      reportToSentry('slow_query', {
+        fingerprint: msg.fingerprint,
+        params: msg.params,
+        ms: msg.ms,
+        workerPid: worker.process.pid,
+      });
+    }
   }
 
   // ─── Adaptive cache: query stats aggregation + promotion ───
@@ -375,11 +384,45 @@ if (cluster.isPrimary) {
 
     warmerProcess.on('message', (msg) => {
       if (msg.type === 'warm-complete') {
-        console.log('[warmer] Warming completed successfully');
         warmerDone = true;
+        if (msg.allSitemapsOk) {
+          console.log(`[warmer] Complete: ${msg.pagesWarmed} pages, ${msg.sitemapsWarmed}/${msg.sitemapsTotal} sitemaps`);
+        } else {
+          // Sitemaps partially failed — alert via Sentry
+          const failedCount = msg.failedSitemaps?.length || 0;
+          console.warn(`[warmer] Complete with ${failedCount} sitemap failures: ${msg.sitemapsWarmed}/${msg.sitemapsTotal} OK`);
+          if (failedCount > 0) {
+            reportToSentry('sitemap_warming_partial', {
+              pagesWarmed: msg.pagesWarmed,
+              sitemapsWarmed: msg.sitemapsWarmed,
+              sitemapsTotal: msg.sitemapsTotal,
+              failedSitemaps: msg.failedSitemaps,
+              culprit: msg.failedSitemaps[0],
+            });
+          }
+        }
       }
       if (msg.type === 'warm-failed') {
         console.error(`[warmer] Failed: ${msg.error}`);
+        reportToSentry('warmer_failed', {
+          error: msg.error,
+          pagesWarmed: msg.pagesWarmed || 0,
+          sitemapsWarmed: msg.sitemapsWarmed || 0,
+        });
+      }
+      if (msg.type === 'warm-timeout') {
+        warmerDone = true; // Allow slow alerts even though warmup didn't complete
+        console.error(`[warmer] TIMEOUT: ${msg.pagesWarmed} pages, ${msg.sitemapsWarmed}/${msg.sitemapsTotal} sitemaps, memory ${msg.memoryPct}%`);
+        reportToSentry('warmer_timeout', {
+          pagesWarmed: msg.pagesWarmed,
+          sitemapsWarmed: msg.sitemapsWarmed,
+          sitemapsTotal: msg.sitemapsTotal,
+          failedSitemaps: msg.failedSitemaps,
+          memoryPct: msg.memoryPct,
+          culprit: msg.memoryPct > 85
+            ? `Memory pressure (${msg.memoryPct}%) blocked warming — optimize DB working set`
+            : `Warming took >10 min — check slow sitemap generation`,
+        });
       }
     });
 
