@@ -117,25 +117,24 @@ let cacheWarmedAt: string | null = null;
 const IS_WARM_WORKER = process.env.CACHE_WARM_WORKER !== '0';
 
 function startBackgroundWarming(): void {
-  if (!IS_WARM_WORKER || !_warmQueryCache) {
+  if (!IS_WARM_WORKER) { cacheWarmed = true; cacheWarmedAt = new Date().toISOString(); return; }
+
+  // Multi-DB portals: warm in-process (warmQueryCache(env) with all DBs)
+  // Single-DB portals: skip in-process warming — warmer.mjs handles it via HTTP page fetches
+  // which trigger cached() functions naturally. In-process warming on single-DB portals
+  // risks signature mismatch (db vs env argument).
+  if (!IS_MULTI_DB || !_warmQueryCache) {
     cacheWarmed = true;
     cacheWarmedAt = new Date().toISOString();
     return;
   }
+
   const env = getAllDbs();
   if (Object.keys(env).length === 0) { cacheWarmed = true; return; }
 
   (async () => {
     try {
-      // Multi-DB portals: warmQueryCache(env: Record<string, D1Database>)
-      // Single-DB portals: warmQueryCache(db: D1Database) — pass env, fallback to primary DB
-      try {
-        await _warmQueryCache!(env);
-      } catch {
-        // Fallback: old single-DB signature expects a D1Database directly
-        const primaryDb = env.DB || Object.values(env)[0];
-        if (primaryDb) await _warmQueryCache!(primaryDb);
-      }
+      await _warmQueryCache!(env);
       cacheWarmedAt = new Date().toISOString();
     } catch (err) {
       console.error('[cache] Warming failed:', err);
@@ -202,13 +201,12 @@ warmSitemaps();
 export { inflight, eventLoopLag, cacheWarmed, cacheWarmedAt, getRollingMetrics, getAdaptiveCacheStats };
 
 // --- Edge TTL ---
-function getEdgeTtl(p: string): number {
-  const c = p.charCodeAt(1);
-  if (c === 112 || c === 101 || c === 102 || c === 100 || c === 98 || c === 97 ||
-      c === 108 || c === 111 || c === 106 || c === 122) return 86400;
-  if (p.startsWith('/s') || p.startsWith('/c') || p.startsWith('/m')) return 86400;
-  if (p.startsWith('/ranking') || p.startsWith('/guide')) return 21600;
-  return 3600;
+// Portal data is static between DB updates. All pages get long edge TTL by default.
+// Only pages with query parameters (search, filters) get shorter TTL since the
+// result depends on user input and there are too many variants to cache effectively.
+function getEdgeTtl(url: URL): number {
+  if (url.search) return 3600;   // 1h — has query params (search, filter, pagination)
+  return 86400;                   // 24h — static data page
 }
 
 export const onRequest = defineMiddleware(async (context, next) => {
@@ -243,7 +241,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
       if (response.status === 200) {
         const ct = response.headers.get('content-type') || '';
         if (ct.includes('text/html') || ct.includes('xml')) {
-          const ttl = ct.includes('xml') ? 86400 : getEdgeTtl(path);
+          const ttl = ct.includes('xml') ? 86400 : getEdgeTtl(context.url);
           const cc = `public, max-age=300, s-maxage=${ttl}`;
 
           if (isSitemapPath(path)) {
