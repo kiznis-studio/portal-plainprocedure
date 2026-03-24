@@ -3,6 +3,11 @@
 // D1: db.prepare(sql).bind(...params).first<T>() / .all<T>() / .run()
 // better-sqlite3: db.prepare(sql).get(...params) / .all(...params) / .run(...params)
 // Key difference: D1 uses numbered params (?1, ?2), better-sqlite3 only works with unnamed (?)
+//
+// IMPORTANT: Methods are SYNCHRONOUS (return plain values, not Promises) despite the D1
+// interface declaring Promise returns. better-sqlite3 is synchronous and wrapping in
+// async breaks the `.all<T>().results` chain pattern used by 70+ sitemaps. Callers
+// using `await` still work fine (await on a non-Promise resolves immediately).
 
 import Database from 'better-sqlite3';
 import { copyFileSync, existsSync, statSync } from 'node:fs';
@@ -247,43 +252,29 @@ export function createD1Adapter(dbPath: string): D1Database {
         const ph = makeParamsHash(params);
 
         return {
-          async first<T = unknown>(): Promise<T | null> {
-            if (promotedFingerprints.has(fp)) {
-              const cacheKey = `adaptive:${fp}:${ph}`;
-              const cached = await adaptiveGet(cacheKey);
-              if (cached !== null) return cached as T;
-              const start = performance.now();
-              const row = stmt.get(...params);
-              const ms = performance.now() - start;
-              trackQuery(fp, ph, ms);
-              const result = (row as T) ?? null;
-              if (ms > 3) adaptiveSet(cacheKey, result);
-              return result;
-            }
+          first<T = unknown>(): T | null {
             const start = performance.now();
             const row = stmt.get(...params);
-            trackQuery(fp, ph, performance.now() - start);
+            const ms = performance.now() - start;
+            trackQuery(fp, ph, ms);
+            // Fire-and-forget: populate adaptive cache in background
+            if (promotedFingerprints.has(fp) && ms > 3) {
+              adaptiveSet(`adaptive:${fp}:${ph}`, (row as T) ?? null);
+            }
             return (row as T) ?? null;
           },
-          async all<T = unknown>(): Promise<D1Result<T>> {
-            if (promotedFingerprints.has(fp)) {
-              const cacheKey = `adaptive:${fp}:${ph}`;
-              const cached = await adaptiveGet(cacheKey);
-              if (cached !== null) return cached as D1Result<T>;
-              const start = performance.now();
-              const rows = stmt.all(...params);
-              const ms = performance.now() - start;
-              trackQuery(fp, ph, ms);
-              const result: D1Result<T> = { results: rows as T[], success: true, meta: {} };
-              if (ms > 3) adaptiveSet(cacheKey, result);
-              return result;
-            }
+          all<T = unknown>(): D1Result<T> {
             const start = performance.now();
             const rows = stmt.all(...params);
-            trackQuery(fp, ph, performance.now() - start);
-            return { results: rows as T[], success: true, meta: {} };
+            const ms = performance.now() - start;
+            trackQuery(fp, ph, ms);
+            const result: D1Result<T> = { results: rows as T[], success: true, meta: {} };
+            if (promotedFingerprints.has(fp) && ms > 3) {
+              adaptiveSet(`adaptive:${fp}:${ph}`, result);
+            }
+            return result;
           },
-          async run() {
+          run() {
             stmt.run(...params);
             return { success: true, meta: {} };
           },
@@ -295,43 +286,28 @@ export function createD1Adapter(dbPath: string): D1Database {
           return makeBindResult(params);
         },
         // Unbound versions (no params)
-        async first<T = unknown>(): Promise<T | null> {
-          if (promotedFingerprints.has(fp)) {
-            const cacheKey = `adaptive:${fp}:_`;
-            const cached = await adaptiveGet(cacheKey);
-            if (cached !== null) return cached as T;
-            const start = performance.now();
-            const row = stmt.get();
-            const ms = performance.now() - start;
-            trackQuery(fp, '_', ms);
-            const result = (row as T) ?? null;
-            if (ms > 3) adaptiveSet(cacheKey, result);
-            return result;
-          }
+        first<T = unknown>(): T | null {
           const start = performance.now();
           const row = stmt.get();
-          trackQuery(fp, '_', performance.now() - start);
+          const ms = performance.now() - start;
+          trackQuery(fp, '_', ms);
+          if (promotedFingerprints.has(fp) && ms > 3) {
+            adaptiveSet(`adaptive:${fp}:_`, (row as T) ?? null);
+          }
           return (row as T) ?? null;
         },
-        async all<T = unknown>(): Promise<D1Result<T>> {
-          if (promotedFingerprints.has(fp)) {
-            const cacheKey = `adaptive:${fp}:_`;
-            const cached = await adaptiveGet(cacheKey);
-            if (cached !== null) return cached as D1Result<T>;
-            const start = performance.now();
-            const rows = stmt.all();
-            const ms = performance.now() - start;
-            trackQuery(fp, '_', ms);
-            const result: D1Result<T> = { results: rows as T[], success: true, meta: {} };
-            if (ms > 3) adaptiveSet(cacheKey, result);
-            return result;
-          }
+        all<T = unknown>(): D1Result<T> {
           const start = performance.now();
           const rows = stmt.all();
-          trackQuery(fp, '_', performance.now() - start);
-          return { results: rows as T[], success: true, meta: {} };
+          const ms = performance.now() - start;
+          trackQuery(fp, '_', ms);
+          const result: D1Result<T> = { results: rows as T[], success: true, meta: {} };
+          if (promotedFingerprints.has(fp) && ms > 3) {
+            adaptiveSet(`adaptive:${fp}:_`, result);
+          }
+          return result;
         },
-        async run() {
+        run() {
           stmt.run();
           return { success: true, meta: {} };
         },

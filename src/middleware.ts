@@ -87,9 +87,27 @@ function getDb(key: string): ReturnType<typeof createD1Adapter> | null {
   return dbInstances[key];
 }
 
+// Null-safe DB stub — returns empty results for all queries.
+// Prevents sitemap crashes when the real DB is unavailable (startup, missing file).
+// Synchronous (matching the adapter) so .all().results works.
+const NULL_DB: D1Database = {
+  prepare: () => {
+    const bound = {
+      first: () => null,
+      all: () => ({ results: [] as unknown[], success: true, meta: {} }),
+      run: () => ({ success: true, meta: {} }),
+    };
+    return { ...bound, bind: () => bound };
+  },
+};
+
 function getAllDbs(): Record<string, D1Database> {
   const env: Record<string, D1Database> = {};
-  for (const key of Object.keys(DB_PATHS)) { const d = getDb(key); if (d) env[key] = d; }
+  for (const key of Object.keys(DB_PATHS)) {
+    env[key] = getDb(key) || NULL_DB;
+  }
+  // Ensure DB key always exists (single-DB portals expect env.DB)
+  if (!env['DB']) env['DB'] = NULL_DB;
   return env;
 }
 
