@@ -1,6 +1,6 @@
 import type { APIRoute } from 'astro';
 import { readFileSync } from 'node:fs';
-import { inflight, eventLoopLag, cacheWarmed, cacheWarmedAt, getCacheStats, getRollingMetrics } from '../middleware';
+import { inflight, eventLoopLag, cacheWarmed, cacheWarmedAt, getRollingMetrics, getAdaptiveCacheStats } from '../middleware';
 import { getQueryCacheSize } from '../lib/db';
 import { dbMeta } from '../lib/d1-adapter';
 
@@ -37,9 +37,9 @@ export const GET: APIRoute = async ({ locals }) => {
 
   const allDbOk = Object.keys(dbResults).length > 0 && Object.values(dbResults).every(v => v);
   const mem = process.memoryUsage();
-  const cache = getCacheStats();
   const demand = getRollingMetrics();
   const container = getContainerMemory();
+  const adaptive = getAdaptiveCacheStats();
 
   // Memory warnings
   const warnings: string[] = [];
@@ -63,12 +63,22 @@ export const GET: APIRoute = async ({ locals }) => {
     lagMs: Math.round(eventLoopLag * 100) / 100,
     inflight,
     dbs: dbResults,
-    cache: { warmed: cacheWarmed, warmedAt: cacheWarmedAt, ...cache, query: getQueryCacheSize() },
+    cache: {
+      warmed: cacheWarmed,
+      warmedAt: cacheWarmedAt,
+      query: getQueryCacheSize(),
+      adaptive,
+    },
     demand: { ...demand, queueDepth: inflight },
     db: {
       mmapMB: Math.round(dbMeta.mmapSize / 1048576),
       fileMB: Math.round(dbMeta.fileSizeBytes / 1048576),
       cacheMB: Math.round((dbMeta.cacheSizeKB || 0) / 1024),
+    },
+    // TRM scaling hints — container's self-assessment
+    scaling: {
+      ready: cacheWarmed,
+      memoryPressure: container.usagePct,
     },
     warnings,
   }), {

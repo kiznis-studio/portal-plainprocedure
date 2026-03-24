@@ -26,6 +26,8 @@ WORKDIR /app
 COPY --from=builder --chown=app:app /app/dist ./dist
 COPY --from=builder --chown=app:app /app/node_modules ./node_modules
 COPY --from=builder --chown=app:app /app/package.json ./
+# If portal uses OG image generation with fonts, add:
+# COPY --from=builder --chown=app:app /app/src/assets ./src/assets
 COPY --chown=app:app cluster-entry.mjs ./
 COPY --chown=app:app warmer.mjs ./
 COPY --chown=app:app memory-budget.mjs ./
@@ -33,7 +35,7 @@ USER app
 ENV HOST=0.0.0.0
 ENV PORT=4321
 EXPOSE 4321
-HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \
   CMD node -e "require('http').get('http://localhost:4321/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
 ENTRYPOINT ["tini", "--"]
 CMD ["node", "cluster-entry.mjs"]

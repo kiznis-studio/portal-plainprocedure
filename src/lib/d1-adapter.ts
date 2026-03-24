@@ -37,9 +37,100 @@ function normalizeParams(sql: string): string {
 // Exported metadata for health endpoint
 export const dbMeta = { mmapSize: 0, fileSizeBytes: 0, cacheSizeKB: 0 };
 
+// ─── Query stats for adaptive cache ───
+interface QueryStat {
+  calls: number;
+  totalMs: number;
+  paramVariants: Set<string>;
+}
+
+const queryStats = new Map<string, QueryStat>();
+let statsReportInterval: ReturnType<typeof setInterval> | null = null;
+
+function trackQuery(fp: string, ph: string, ms: number) {
+  const stat = queryStats.get(fp);
+  if (stat) {
+    stat.calls++;
+    stat.totalMs += ms;
+    stat.paramVariants.add(ph);
+  } else {
+    queryStats.set(fp, { calls: 1, totalMs: ms, paramVariants: new Set([ph]) });
+  }
+}
+
+function startStatsReporter() {
+  if (statsReportInterval || !process.send) return;
+  statsReportInterval = setInterval(() => {
+    if (queryStats.size === 0) return;
+    const batch: Array<{ fingerprint: string; calls: number; totalMs: number; avgMs: number; paramVariants: number }> = [];
+    for (const [fp, stat] of queryStats) {
+      batch.push({
+        fingerprint: fp,
+        calls: stat.calls,
+        totalMs: Math.round(stat.totalMs),
+        avgMs: Math.round(stat.totalMs / stat.calls * 10) / 10,
+        paramVariants: stat.paramVariants.size,
+      });
+    }
+    process.send!({ type: 'query-stats-batch', stats: batch });
+    queryStats.clear();
+  }, 10_000);
+  statsReportInterval.unref();
+}
+
+// Fingerprint: normalize SQL by collapsing whitespace (params are already ? placeholders)
+function makeFingerprint(sql: string): string {
+  return sql.replace(/\s+/g, ' ').trim();
+}
+
+function makeParamsHash(params: unknown[]): string {
+  if (params.length === 0) return '_';
+  return params.map(p => String(p)).join('|');
+}
+
+// ─── Adaptive cache client ───
+const promotedFingerprints = new Set<string>();
+const pendingIpcCallbacks = new Map<string, { resolve: (v: unknown) => void; timer: ReturnType<typeof setTimeout> }>();
+
+// Listen for messages from primary
+if (process.send) {
+  process.on('message', (msg: any) => {
+    if (msg?.type === 'adaptive-promoted') {
+      promotedFingerprints.clear();
+      for (const fp of msg.fingerprints) promotedFingerprints.add(fp);
+    }
+    if (msg?.type === 'qcache-result') {
+      const pending = pendingIpcCallbacks.get(msg.key);
+      if (pending) {
+        clearTimeout(pending.timer);
+        pendingIpcCallbacks.delete(msg.key);
+        pending.resolve(msg.hit ? msg.value : null);
+      }
+    }
+  });
+}
+
+function adaptiveGet(key: string): Promise<unknown | null> {
+  return new Promise((resolve) => {
+    if (!process.send) { resolve(null); return; }
+    const timer = setTimeout(() => {
+      pendingIpcCallbacks.delete(key);
+      resolve(null); // timeout — fall through to DB
+    }, 50);
+    pendingIpcCallbacks.set(key, { resolve, timer });
+    process.send!({ type: 'qcache-get', key });
+  });
+}
+
+function adaptiveSet(key: string, value: unknown) {
+  process.send?.({ type: 'qcache-set', key, value });
+}
+
+export function getAdaptiveCacheStats() {
+  return { promotedCount: promotedFingerprints.size };
+}
+
 // Auto-tune SQLite pragmas based on memory budget.
-// Budget system sets SQLITE_CACHE_KB and SQLITE_MMAP_BYTES env vars.
-// Falls back to DB-size-based tiers if env vars are absent (backward-compatible).
 function applyPragmas(db: InstanceType<typeof Database>, dbPath: string) {
   let fileSize = 0;
   try { fileSize = statSync(dbPath).size; } catch { /* use defaults */ }
@@ -50,10 +141,10 @@ function applyPragmas(db: InstanceType<typeof Database>, dbPath: string) {
   let cacheSizeKB: number;
   if (process.env.SQLITE_CACHE_KB) {
     cacheSizeKB = parseInt(process.env.SQLITE_CACHE_KB, 10);
-  } else if (fileSizeMB > 500) { cacheSizeKB = 65536; }   // 64MB
-  else if (fileSizeMB > 100) { cacheSizeKB = 32768; }      // 32MB
-  else if (fileSizeMB > 10) { cacheSizeKB = 16384; }       // 16MB
-  else { cacheSizeKB = 4096; }                              // 4MB
+  } else if (fileSizeMB > 500) { cacheSizeKB = 65536; }
+  else if (fileSizeMB > 100) { cacheSizeKB = 32768; }
+  else if (fileSizeMB > 10) { cacheSizeKB = 16384; }
+  else { cacheSizeKB = 4096; }
 
   // mmap_size: from budget or fallback to capped file size
   let mmapSize: number;
@@ -76,20 +167,13 @@ function applyPragmas(db: InstanceType<typeof Database>, dbPath: string) {
 }
 
 // Self-heal WAL mode databases on read-only mounts.
-// WAL mode requires writing a WAL file even for reads, which fails on :ro mounts.
-// Fix: copy to /tmp, convert to DELETE journal mode, use the copy.
 function openDatabase(dbPath: string): InstanceType<typeof Database> {
   try {
     const db = new Database(dbPath, { fileMustExist: true });
-    // Try a simple prepare to verify the DB is usable
     db.prepare('SELECT 1').get();
-    // Enable WAL mode for better concurrent read performance
-    try { db.pragma('journal_mode = WAL'); } catch { /* expected on truly read-only mounts */ }
-    db.pragma('query_only = ON'); // Safety: reject all SQL writes
-
-    // Performance pragmas — auto-tuned to DB file size (session-level, not persisted)
+    // Read-only data — DELETE mode is correct (no WAL overhead on static DBs)
+    db.pragma('query_only = ON');
     applyPragmas(db, dbPath);
-
     return db;
   } catch (err: any) {
     if (!err?.message?.includes('readonly database')) throw err;
@@ -98,19 +182,15 @@ function openDatabase(dbPath: string): InstanceType<typeof Database> {
     const tmpPath = join('/tmp', `d1-heal-${basename(dbPath)}`);
     console.warn(`[d1-adapter] WAL mode detected on ${dbPath} — copying to ${tmpPath} and fixing`);
     copyFileSync(dbPath, tmpPath);
-    // Also copy WAL/SHM files if they exist alongside the DB
     if (existsSync(dbPath + '-wal')) copyFileSync(dbPath + '-wal', tmpPath + '-wal');
     if (existsSync(dbPath + '-shm')) copyFileSync(dbPath + '-shm', tmpPath + '-shm');
 
-    // Open writable copy and convert to DELETE mode
     const fixDb = new Database(tmpPath);
     fixDb.pragma('journal_mode = DELETE');
     fixDb.close();
 
-    // Now open as readonly with auto-tuned performance pragmas
     const db = new Database(tmpPath, { readonly: true });
     applyPragmas(db, dbPath);
-
     console.warn(`[d1-adapter] Self-healed: ${dbPath} → ${tmpPath} (journal_mode=DELETE)`);
     return db;
   }
@@ -127,19 +207,53 @@ export function createD1Adapter(dbPath: string): D1Database {
     return s;
   }
 
+  // Start reporting query stats to primary (cluster mode)
+  startStatsReporter();
+
   return {
     prepare(sql: string): D1PreparedStatement {
       const normalized = normalizeParams(sql);
       const stmt = getStmt(normalized);
+      const fp = makeFingerprint(normalized);
 
       function makeBindResult(params: unknown[]) {
+        const ph = makeParamsHash(params);
+
         return {
           async first<T = unknown>(): Promise<T | null> {
+            if (promotedFingerprints.has(fp)) {
+              const cacheKey = `adaptive:${fp}:${ph}`;
+              const cached = await adaptiveGet(cacheKey);
+              if (cached !== null) return cached as T;
+              const start = performance.now();
+              const row = stmt.get(...params);
+              const ms = performance.now() - start;
+              trackQuery(fp, ph, ms);
+              const result = (row as T) ?? null;
+              if (ms > 3) adaptiveSet(cacheKey, result);
+              return result;
+            }
+            const start = performance.now();
             const row = stmt.get(...params);
+            trackQuery(fp, ph, performance.now() - start);
             return (row as T) ?? null;
           },
           async all<T = unknown>(): Promise<D1Result<T>> {
+            if (promotedFingerprints.has(fp)) {
+              const cacheKey = `adaptive:${fp}:${ph}`;
+              const cached = await adaptiveGet(cacheKey);
+              if (cached !== null) return cached as D1Result<T>;
+              const start = performance.now();
+              const rows = stmt.all(...params);
+              const ms = performance.now() - start;
+              trackQuery(fp, ph, ms);
+              const result: D1Result<T> = { results: rows as T[], success: true, meta: {} };
+              if (ms > 3) adaptiveSet(cacheKey, result);
+              return result;
+            }
+            const start = performance.now();
             const rows = stmt.all(...params);
+            trackQuery(fp, ph, performance.now() - start);
             return { results: rows as T[], success: true, meta: {} };
           },
           async run() {
@@ -155,11 +269,39 @@ export function createD1Adapter(dbPath: string): D1Database {
         },
         // Unbound versions (no params)
         async first<T = unknown>(): Promise<T | null> {
+          if (promotedFingerprints.has(fp)) {
+            const cacheKey = `adaptive:${fp}:_`;
+            const cached = await adaptiveGet(cacheKey);
+            if (cached !== null) return cached as T;
+            const start = performance.now();
+            const row = stmt.get();
+            const ms = performance.now() - start;
+            trackQuery(fp, '_', ms);
+            const result = (row as T) ?? null;
+            if (ms > 3) adaptiveSet(cacheKey, result);
+            return result;
+          }
+          const start = performance.now();
           const row = stmt.get();
+          trackQuery(fp, '_', performance.now() - start);
           return (row as T) ?? null;
         },
         async all<T = unknown>(): Promise<D1Result<T>> {
+          if (promotedFingerprints.has(fp)) {
+            const cacheKey = `adaptive:${fp}:_`;
+            const cached = await adaptiveGet(cacheKey);
+            if (cached !== null) return cached as D1Result<T>;
+            const start = performance.now();
+            const rows = stmt.all();
+            const ms = performance.now() - start;
+            trackQuery(fp, '_', ms);
+            const result: D1Result<T> = { results: rows as T[], success: true, meta: {} };
+            if (ms > 3) adaptiveSet(cacheKey, result);
+            return result;
+          }
+          const start = performance.now();
           const rows = stmt.all();
+          trackQuery(fp, '_', performance.now() - start);
           return { results: rows as T[], success: true, meta: {} };
         },
         async run() {

@@ -2,29 +2,26 @@
 // Holistic container memory budget — auto-calculates allocations for every
 // component from the cgroup v2 memory limit. No manual CACHE_ENTRIES tuning.
 //
-// Budget model:
+// Budget model (v2 — no response cache):
 //   CONTAINER_LIMIT (cgroup)
 //   ├── HEADROOM (10%) — GC spikes, kernel buffers, safety margin
 //   ├── WARMER (128MB) — background warming process (≥512MB containers only)
-//   ├── PRIMARY PROCESS — Node.js base + response cache + query cache
+//   ├── PRIMARY PROCESS — Node.js base + IPC broker
 //   ├── WORKER 0..N — Node.js + Astro + SQLite (page cache + mmap)
-//   └── RESPONSE CACHE — single cache at primary (workers have none)
+//   ├── EXPLICIT QUERY CACHE (60%) — cached() queries, warm on startup
+//   └── ADAPTIVE QUERY CACHE (40%) — auto-discovered hot queries via IPC
 
 import { readFileSync, statSync } from 'node:fs';
 
 // ─── Constants (measured baselines) ───
 const PRIMARY_BASE_MB = 80;       // Node.js runtime + cluster proxy + mgmt server
 const WORKER_BASE_MB = 80;        // Node.js + Astro SSR framework per worker
-// Warmer process reservation — only for containers ≥512MB (smaller ones skip warming)
-// Actual warmer usage is ~40-60MB (HTTP fetches only), but we budget 128MB for safety.
-// The --max-old-space-size cap in cluster-entry.mjs prevents runaway regardless.
 const HEADROOM_PCT = 0.10;        // 10% safety margin
 const SQLITE_SHARE_PCT = 0.25;    // 25% of usable for all SQLite combined
 const MMAP_SHARE_OF_SQLITE = 0.70;  // 70% of SQLite budget goes to mmap
 const CACHE_SHARE_OF_SQLITE = 0.30; // 30% goes to page cache
-const RESPONSE_CACHE_SHARE = 0.75;  // 75% of remaining for response cache
-const QUERY_CACHE_SHARE = 0.25;     // 25% of remaining for query cache
-const AVG_ENTRY_BYTES = 12288;      // 12KB avg compressed HTML page
+const EXPLICIT_QCACHE_SHARE = 0.60; // 60% of remaining for cached() queries
+const ADAPTIVE_QCACHE_SHARE = 0.40; // 40% of remaining for auto-discovered queries
 const AVG_QUERY_ENTRY_BYTES = 8192; // 8KB avg query cache entry
 
 // ─── Read container memory limit from cgroup v2 ───
@@ -81,7 +78,6 @@ export function calculateBudget(options = {}) {
     256,
     dbSizeMB || 256, // don't exceed file size
   );
-  const mmapBytes = mmapMB * 1024 * 1024;
 
   // page cache: capped at 64MB (negative KB for SQLite PRAGMA)
   const pcacheMB = Math.min(
@@ -104,6 +100,11 @@ export function calculateBudget(options = {}) {
     effectiveWorkersMax--;
   }
 
+  // Hard cap: large DBs cause OOM with multiple workers due to mmap contention
+  if (dbSizeMB > 1000 && effectiveWorkersMax > 2) {
+    effectiveWorkersMax = 2;
+  }
+
   // Recalculate per-worker SQLite with actual worker count (if reduced, each worker gets more)
   let finalMmapMB = mmapMB;
   let finalPcacheMB = pcacheMB;
@@ -120,20 +121,20 @@ export function calculateBudget(options = {}) {
   const workersCostMB = effectiveWorkersMax * finalPerWorkerTotalMB;
 
   // ─── Cache budgets (what's left after processes + SQLite) ───
+  // No response cache — CF edge handles page caching
   const remainingMB = Math.max(usableMB - PRIMARY_BASE_MB - workersCostMB, minCacheMB);
 
-  const responseCacheMB = remainingMB * RESPONSE_CACHE_SHARE;
-  const queryCacheMB = remainingMB * QUERY_CACHE_SHARE;
+  const explicitCacheMB = remainingMB * EXPLICIT_QCACHE_SHARE;
+  const adaptiveCacheMB = remainingMB * ADAPTIVE_QCACHE_SHARE;
 
-  // Convert to entry counts
-  const responseCacheEntries = Math.max(
+  const explicitCacheMax = Math.max(
     500,
-    Math.min(30000, Math.floor(responseCacheMB * 1024 * 1024 / AVG_ENTRY_BYTES)),
+    Math.min(10000, Math.floor(explicitCacheMB * 1024 * 1024 / AVG_QUERY_ENTRY_BYTES)),
   );
 
-  const queryCacheMax = Math.max(
-    500,
-    Math.min(10000, Math.floor(queryCacheMB * 1024 * 1024 / AVG_QUERY_ENTRY_BYTES)),
+  const adaptiveCacheMax = Math.max(
+    100,
+    Math.min(5000, Math.floor(adaptiveCacheMB * 1024 * 1024 / AVG_QUERY_ENTRY_BYTES)),
   );
 
   const budget = {
@@ -156,11 +157,11 @@ export function calculateBudget(options = {}) {
     sqliteCacheKB: finalPcacheKB,
     sqliteCacheMB: finalPcacheMB,
 
-    // Cache budgets
-    responseCacheEntries,
-    responseCacheMB: Math.round(responseCacheMB),
-    queryCacheMax,
-    queryCacheMB: Math.round(queryCacheMB),
+    // Query cache budgets (no response cache — CF edge handles pages)
+    explicitCacheMax,
+    explicitCacheMB: Math.round(explicitCacheMB),
+    adaptiveCacheMax,
+    adaptiveCacheMB: Math.round(adaptiveCacheMB),
   };
 
   return budget;
@@ -174,8 +175,8 @@ export function logBudget(budget) {
     `[memory-budget] Workers: ${budget.effectiveWorkersMax} max` +
       (budget.workersReduced ? ` (reduced from ${budget.configuredWorkersMax} — not enough memory)` : ''),
     `[memory-budget] SQLite/worker: mmap=${budget.sqliteMmapMB}MB, pcache=${budget.sqliteCacheMB}MB`,
-    `[memory-budget] Response cache: ${budget.responseCacheEntries} entries (~${budget.responseCacheMB}MB)`,
-    `[memory-budget] Query cache: ${budget.queryCacheMax} max entries (~${budget.queryCacheMB}MB)`,
+    `[memory-budget] Explicit query cache: ${budget.explicitCacheMax} max entries (~${budget.explicitCacheMB}MB)`,
+    `[memory-budget] Adaptive query cache: ${budget.adaptiveCacheMax} max entries (~${budget.adaptiveCacheMB}MB)`,
     budget.warmerHeapMB > 0
       ? `[memory-budget] Warmer: ${budget.warmerHeapMB}MB reserved (separate process)`
       : `[memory-budget] Warmer: disabled (container <512MB)`,

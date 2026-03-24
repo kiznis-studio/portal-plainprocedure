@@ -14,6 +14,8 @@ import http from 'node:http';
 
 const PRIMARY_PORT = parseInt(process.env.PRIMARY_PORT || '4321', 10);
 const SITEMAP_CACHE_DIR = '/tmp/sitemap-cache';
+let pagesWarmed = 0;
+let sitemapsWarmed = 0;
 
 try { mkdirSync(SITEMAP_CACHE_DIR, { recursive: true }); } catch {}
 
@@ -28,9 +30,9 @@ function containerMemoryPct() {
 
 function shouldPause() {
   const pct = containerMemoryPct();
-  if (pct > 0.85) return 30000; // 30s pause — critical
-  if (pct > 0.70) return 5000;  // 5s pause — caution
-  return 0;
+  if (pct > 0.90) return 30000; // 30s — critical, near OOM
+  if (pct > 0.85) return 5000;  // 5s — elevated
+  return 0;                     // below 85% — proceed normally
 }
 
 // ─── Page pre-fetch warming ───
@@ -39,6 +41,7 @@ async function warmPages() {
 
   // Priority 1: Homepage (most important, warms global queries)
   await fetchWithRetry('/');
+  pagesWarmed++;
 
   // Priority 2: Listing pages (warm state/category queries)
   for (const page of ['/states', '/rankings', '/search', '/guides']) {
@@ -48,6 +51,7 @@ async function warmPages() {
       await sleep(pause);
     }
     await fetchWithRetry(page);
+    pagesWarmed++;
     await sleep(1000); // 1s between pages
   }
 
@@ -94,6 +98,7 @@ async function warmSitemaps() {
       }
       await sleep(2000); // 2s between sitemaps
     }
+    sitemapsWarmed = warmed;
     console.log(`[warmer] Warmed ${warmed} sitemaps to disk`);
   } catch (err) {
     console.error('[warmer] Sitemap warming failed:', err.message);
@@ -159,6 +164,6 @@ setTimeout(async () => {
 
 // Safety timeout — kill if warming takes too long
 setTimeout(() => {
-  console.log('[warmer] Timeout reached (10 min), exiting');
+  console.log(`[warmer] Timeout (10 min) — warmed ${pagesWarmed} pages, ${sitemapsWarmed} sitemaps before exit`);
   process.exit(0);
 }, 600000);

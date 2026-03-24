@@ -1,26 +1,25 @@
 /**
- * Cluster entry point with shared response cache at primary.
+ * Cluster entry point — proxy + query cache broker (v2).
  *
  * Architecture:
- *   Caddy → Primary :4321 (shared response cache)
- *            ├── Cache HIT → serve directly (~0.5ms, no worker)
- *            └── Cache MISS → proxy to worker → cache → serve
+ *   Caddy → Primary :4321 (proxy + query cache broker)
+ *            └── Proxy to worker (retry on failure, round-robin)
  *                 ├── Worker 0 :14321 (render + query cache warming)
  *                 ├── Worker 1 :14322 (render only)
  *                 └── Worker N :1432N (render only)
  *
- * Benefits vs per-worker cache:
- *   - ONE response cache not N duplicates
- *   - Cache hits never reach workers — zero worker CPU for cached pages
- *   - New workers scale instantly (no cold cache)
- *   - Only worker 0 warms query cache — no duplicate DB work
+ * Caching layers:
+ *   - CF edge: HTML page cache (300s browser, 86400s edge)
+ *   - Sitemap disk: /tmp/sitemap-cache (workers)
+ *   - Explicit query cache: cached() in db.ts, warm on startup (IPC → primary)
+ *   - Adaptive query cache: auto-discovered hot queries (IPC → primary)
+ *   - No in-memory response cache — CF edge handles pages
  */
 
 import cluster from 'node:cluster';
 import http from 'node:http';
 import { fork } from 'node:child_process';
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { gzipSync, gunzipSync } from 'node:zlib';
 
 // Derive portal name: PORTAL_NAME env > hostname (container_name = portal-slug) > 'unknown'
 import os from 'node:os';
@@ -61,16 +60,32 @@ if (cluster.isPrimary) {
   const SENTRY_SLOW_MS = parseInt(process.env.SENTRY_SLOW_MS || '2000', 10);
   const PROXY_TIMEOUT_MS = parseInt(process.env.PROXY_TIMEOUT_MS || '15000', 10);
 
-  // Rate-limit Sentry events to avoid flooding (max 1 per event type per 60s)
-  const sentryRateLimit = new Map(); // eventType → lastSentTimestamp
+  // Rate-limit Sentry events with count aggregation.
+  // Instead of dropping repeated events, we count them and include the count
+  // in the next event that fires. This preserves severity information —
+  // "14 proxy_502 in 60s" is very different from "1 proxy_502".
+  const sentryRateLimit = new Map(); // eventType → { lastSent, suppressedCount }
   const SENTRY_RATE_LIMIT_MS = 60000;
 
   function reportToSentry(eventType, extra = {}) {
     if (!Sentry) return;
     const now = Date.now();
-    const lastSent = sentryRateLimit.get(eventType) || 0;
-    if (now - lastSent < SENTRY_RATE_LIMIT_MS) return;
-    sentryRateLimit.set(eventType, now);
+    const state = sentryRateLimit.get(eventType) || { lastSent: 0, suppressedCount: 0 };
+
+    if (now - state.lastSent < SENTRY_RATE_LIMIT_MS) {
+      // Within rate limit window — count but don't send yet
+      state.suppressedCount++;
+      sentryRateLimit.set(eventType, state);
+      return;
+    }
+
+    // Include suppressed count from previous window if any
+    if (state.suppressedCount > 0) {
+      extra.suppressedInLastWindow = state.suppressedCount;
+      extra.totalOccurrences = state.suppressedCount + 1;
+    }
+
+    sentryRateLimit.set(eventType, { lastSent: now, suppressedCount: 0 });
 
     const isError = eventType.includes('crash') || eventType.includes('degraded') ||
                     eventType.includes('50') || eventType.includes('timeout') ||
@@ -92,39 +107,15 @@ if (cluster.isPrimary) {
     console.warn(`[cluster] WORKERS_MAX reduced ${CONFIGURED_MAX_WORKERS} → ${MAX_WORKERS} (memory budget)`);
   }
 
-  // ─── Shared response cache (owned by primary) ───
-  const MAX_CACHE = budget.responseCacheEntries;
-  if (process.env.CACHE_ENTRIES) {
-    console.warn(`[cluster] CACHE_ENTRIES env var ignored — using budget: ${MAX_CACHE} entries`);
-  }
-  const responseCache = new Map(); // key → { compressed, contentType, cacheControl, hits }
-  let totalHits = 0;
-  let totalMisses = 0;
-
-  function getCached(key) {
-    const entry = responseCache.get(key);
-    if (!entry) { totalMisses++; return null; }
-    responseCache.delete(key);
-    entry.hits++;
-    responseCache.set(key, entry);
-    totalHits++;
-    return entry;
-  }
-
-  function setCache(key, compressed, contentType, cacheControl) {
-    if (responseCache.has(key)) responseCache.delete(key);
-    if (responseCache.size >= MAX_CACHE) {
-      const firstKey = responseCache.keys().next().value;
-      if (firstKey) responseCache.delete(firstKey);
-    }
-    responseCache.set(key, { compressed, contentType, cacheControl, hits: 0 });
-  }
+  // ─── No response cache — CF edge handles page caching ───
+  // Response cache removed in v2. Memory freed for query caches + workers.
 
   // ─── Worker management ───
   const workerPorts = []; // active worker ports for round-robin
   const gracefullyShuttingDown = new Set();
   let nextWorker = 0;
   let workerIndex = 0;
+  let primaryWorkerPort = null; // Worker 0 — owns warm query cache, never blacklisted
 
   function forkWorker(isFirst) {
     const port = INTERNAL_BASE_PORT + workerIndex++;
@@ -139,6 +130,8 @@ if (cluster.isPrimary) {
       SQLITE_MMAP_BYTES: String(budget.sqliteMmapBytes),
     });
     w._assignedPort = port;
+    w._isPrimary = isFirst; // Worker 0 = primary (warm query cache owner)
+    if (isFirst) primaryWorkerPort = port;
     w.on('message', msg => handleWorkerMessage(w, msg));
     // Poll worker health until it responds — avoids race condition (ECONNRESET)
     const readyCheck = setInterval(() => {
@@ -161,7 +154,7 @@ if (cluster.isPrimary) {
   // Worker 0 warms queries → sends results to primary via IPC.
   // Other workers ask primary → get instant hits. Zero duplicate DB work.
   // Bounded query cache with LRU eviction (budget-allocated)
-  const QUERY_CACHE_MAX = budget.queryCacheMax;
+  const QUERY_CACHE_MAX = budget.explicitCacheMax + budget.adaptiveCacheMax;
   const sharedQueryCache = new Map(); // key → value
 
   function setQueryCache(key, value) {
@@ -192,11 +185,95 @@ if (cluster.isPrimary) {
       });
     }
 
-    if (msg.type === 'listening') {
-      workerPorts.push(worker._assignedPort);
-      console.log(`[cluster] Worker ${worker.process.pid} ready on :${worker._assignedPort}`);
+    // Note: worker readiness is handled by the health-check polling in forkWorker().
+    // The 'listening' message is NOT used for port registration to avoid race conditions
+    // where requests route to a half-started worker before /health responds.
+
+    if (msg.type === 'query-stats-batch') {
+      mergeQueryStats(msg.stats);
     }
   }
+
+  // ─── Adaptive cache: query stats aggregation + promotion ───
+  const ADAPTIVE_CACHE_MAX = budget.adaptiveCacheMax;
+  const PROMOTION_INTERVAL = 30_000; // analyze every 30s
+  const MIN_QUERY_MS = 3;            // don't cache sub-3ms queries (IPC overhead)
+  const MAX_PARAM_VARIANTS = 500;    // skip per-entity queries
+
+  const globalQueryStats = new Map(); // fingerprint → { calls, totalMs, avgMs, paramVariants }
+  let promotedFingerprints = new Set();
+
+  function mergeQueryStats(batch) {
+    for (const stat of batch) {
+      const existing = globalQueryStats.get(stat.fingerprint);
+      if (existing) {
+        existing.calls += stat.calls;
+        existing.totalMs += stat.totalMs;
+        existing.avgMs = existing.totalMs / existing.calls;
+        existing.paramVariants = Math.max(existing.paramVariants, stat.paramVariants);
+      } else {
+        globalQueryStats.set(stat.fingerprint, { ...stat });
+      }
+    }
+  }
+
+  function runPromotion() {
+    const candidates = [];
+    for (const [fp, stat] of globalQueryStats) {
+      if (stat.avgMs < MIN_QUERY_MS) continue;
+      if (stat.paramVariants > MAX_PARAM_VARIANTS) continue;
+      const value = stat.calls * stat.avgMs; // total CPU savings
+      candidates.push({ fingerprint: fp, value, avgMs: stat.avgMs, calls: stat.calls, paramVariants: stat.paramVariants });
+    }
+
+    candidates.sort((a, b) => b.value - a.value);
+
+    const newPromoted = new Set();
+    let entries = 0;
+    for (const c of candidates) {
+      if (entries >= ADAPTIVE_CACHE_MAX) break;
+      newPromoted.add(c.fingerprint);
+      entries += Math.min(c.paramVariants || 10, 100);
+    }
+
+    // Only broadcast if promotion set changed
+    const changed = newPromoted.size !== promotedFingerprints.size ||
+      [...newPromoted].some(fp => !promotedFingerprints.has(fp));
+
+    if (changed) {
+      promotedFingerprints = newPromoted;
+      for (const worker of Object.values(cluster.workers)) {
+        if (worker && !worker.isDead()) {
+          try { worker.send({ type: 'adaptive-promoted', fingerprints: [...newPromoted] }); } catch {}
+        }
+      }
+
+      // Evict demoted entries from shared cache
+      for (const key of sharedQueryCache.keys()) {
+        if (!key.startsWith('adaptive:')) continue;
+        const parts = key.split(':');
+        const fp = parts.slice(1, -1).join(':');
+        if (!newPromoted.has(fp)) sharedQueryCache.delete(key);
+      }
+
+      if (newPromoted.size > 0) {
+        const top3 = candidates.slice(0, 3).map(c =>
+          `${c.fingerprint.substring(0, 40)}(${c.calls}x${Math.round(c.avgMs)}ms)`
+        ).join(', ');
+        console.log(`[adaptive] Promoted ${newPromoted.size} queries. Top: ${top3}`);
+      }
+    }
+
+    // Decay stats for next window (halve to let new patterns emerge)
+    for (const [fp, stat] of globalQueryStats) {
+      stat.calls = Math.floor(stat.calls / 2);
+      stat.totalMs = stat.totalMs / 2;
+      if (stat.calls === 0) globalQueryStats.delete(fp);
+    }
+  }
+
+  const promotionTimer = setInterval(runPromotion, PROMOTION_INTERVAL);
+  promotionTimer.unref();
 
   // ─── Crash throttle — prevent rapid-fire restarts under memory pressure ───
   const recentCrashes = [];
@@ -328,26 +405,45 @@ if (cluster.isPrimary) {
     warmerDone = true; // No warmup phase — slow alerts active immediately
   }
 
-  // ─── Edge TTL (matches middleware.ts) ───
-  function getEdgeTtl(p) {
-    const c = p.charCodeAt(1);
-    if (c === 112 || c === 101 || c === 102 || c === 100 || c === 98 || c === 97 ||
-        c === 108 || c === 111 || c === 106 || c === 122) return 86400;
-    if (p.startsWith('/s') || p.startsWith('/c') || p.startsWith('/m')) return 86400;
-    if (p.startsWith('/ranking') || p.startsWith('/guide')) return 21600;
-    return 3600;
+  // Edge TTL removed — middleware.ts sets Cache-Control headers, no primary-side caching
+
+  // ─── Proxy to worker with retry failover ───
+  // On connection error (ECONNRESET, ECONNREFUSED), immediately retry on the next
+  // healthy worker instead of returning 502. Only fails to client when ALL workers
+  // have been tried or the request times out. Timeouts are never retried (the query
+  // is genuinely slow, retrying won't help).
+  const MAX_RETRIES = 2; // max retry attempts (total attempts = 1 + MAX_RETRIES)
+
+  // Track recently-failed ports to avoid routing to dying workers.
+  // Entries auto-expire after 5s — enough for the cluster exit handler to clean up.
+  const failedPorts = new Map(); // port → timestamp
+  const FAILED_PORT_TTL = 5000;
+
+  function getHealthyPort() {
+    const now = Date.now();
+    // Clean expired entries
+    for (const [p, t] of failedPorts) {
+      if (now - t > FAILED_PORT_TTL) failedPorts.delete(p);
+    }
+    // Find a port not in the failed set
+    for (let i = 0; i < workerPorts.length; i++) {
+      const port = workerPorts[nextWorker++ % workerPorts.length];
+      if (!failedPorts.has(port)) return port;
+    }
+    // All ports failed recently — try the least-recently-failed one
+    return workerPorts.length > 0 ? workerPorts[nextWorker++ % workerPorts.length] : null;
   }
 
-  // ─── Proxy to worker ───
-  function proxyToWorker(req, res) {
-    if (workerPorts.length === 0) {
-      reportToSentry('proxy_503', { url: req.url, reason: 'no_workers' });
+  function proxyToWorker(req, res, attempt = 0) {
+    const port = getHealthyPort();
+    if (!port) {
+      reportToSentry('proxy_503', { url: req.url, reason: 'no_healthy_workers', attempt });
       res.writeHead(503, { 'Content-Type': 'text/plain' });
       res.end('No workers available');
       return;
     }
-    const port = workerPorts[nextWorker++ % workerPorts.length];
-    const proxyStart = Date.now();
+    const proxyStart = attempt === 0 ? Date.now() : (req._proxyStart || Date.now());
+    if (attempt === 0) req._proxyStart = proxyStart;
     let timedOut = false;
     const proxyReq = http.request(
       { hostname: '127.0.0.1', port, path: req.url, method: req.method, headers: req.headers },
@@ -355,48 +451,25 @@ if (cluster.isPrimary) {
         const ct = proxyRes.headers['content-type'] || '';
         const status = proxyRes.statusCode;
 
-        // Report 5xx errors from workers to Sentry
+        // Report 5xx from workers to Sentry
         if (status >= 500) {
           reportToSentry(`worker_${status}`, { url: req.url, workerPort: port });
         }
 
-        // Report slow responses to Sentry — only after warmer completes
-        // Cold pages during warmup are expected and would flood Sentry on every deploy
-        // Threshold: 2s default (Googlebot reduces crawl rate above ~2s)
+        // Report slow responses — only after warmer completes
         const elapsed = Date.now() - proxyStart;
         if (warmerDone && elapsed > SENTRY_SLOW_MS) {
           reportToSentry('slow_response', { url: req.url, elapsedMs: elapsed, workerPort: port, thresholdMs: SENTRY_SLOW_MS });
         }
 
-        const cacheable = req.method === 'GET' && status === 200 &&
-                          (ct.includes('text/html') || ct.includes('xml'));
-
-        if (cacheable) {
-          // Buffer response to cache it
-          const chunks = [];
-          proxyRes.on('data', c => chunks.push(c));
-          proxyRes.on('end', () => {
-            const body = Buffer.concat(chunks);
-            if (body.length > 50 && body[0] === 60) { // starts with '<'
-              const path = req.url.split('?')[0];
-              const ttl = ct.includes('xml') ? 86400 : getEdgeTtl(path);
-              const cc = `public, max-age=300, s-maxage=${ttl}`;
-              setCache(req.url, gzipSync(body, { level: 1 }), ct, cc);
-              res.writeHead(200, { 'Content-Type': ct, 'Cache-Control': cc, 'X-Cache': 'MISS' });
-            } else {
-              res.writeHead(status, proxyRes.headers);
-            }
-            res.end(body);
-          });
-        } else {
-          // Non-cacheable — stream directly
-          res.writeHead(status, proxyRes.headers);
-          proxyRes.pipe(res);
-        }
+        // Stream response directly — no in-memory page cache
+        // CF edge + browser handle page-level caching via Cache-Control headers
+        res.writeHead(status, proxyRes.headers);
+        proxyRes.pipe(res);
       }
     );
 
-    // Timeout: kill hung proxy requests — worker may be deadlocked or stuck on slow query
+    // Timeout — never retried (the query is genuinely slow)
     proxyReq.setTimeout(PROXY_TIMEOUT_MS, () => {
       timedOut = true;
       proxyReq.destroy();
@@ -410,9 +483,24 @@ if (cluster.isPrimary) {
     });
 
     proxyReq.on('error', (err) => {
-      if (timedOut) return; // already handled by timeout
-      console.error(`[cluster] Proxy error to :${port}: ${err.message}`);
-      reportToSentry('proxy_502', { url: req.url, workerPort: port, error: err.message });
+      if (timedOut) return;
+
+      // Mark this port as temporarily failed — skip it for 5s.
+      // Never blacklist the primary worker (Worker 0) — it owns the warm query cache
+      // and is the last line of defense. Better to retry on it than have no workers.
+      if (port !== primaryWorkerPort) {
+        failedPorts.set(port, Date.now());
+      }
+
+      // Retry on next worker if attempts remain and headers haven't been sent
+      if (attempt < MAX_RETRIES && !res.headersSent && workerPorts.length > 1) {
+        console.warn(`[cluster] Retry ${attempt + 1}/${MAX_RETRIES}: :${port} failed (${err.message}), trying next worker for ${req.url}`);
+        proxyToWorker(req, res, attempt + 1);
+        return;
+      }
+
+      console.error(`[cluster] Proxy error to :${port}: ${err.message} (attempt ${attempt + 1}, no more retries)`);
+      reportToSentry('proxy_502', { url: req.url, workerPort: port, error: err.message, attempt: attempt + 1 });
       if (!res.headersSent) {
         res.writeHead(502, { 'Content-Type': 'text/plain' });
         res.end('Bad Gateway');
@@ -432,8 +520,8 @@ if (cluster.isPrimary) {
       const checks = {
         workers: workerPorts.length > 0 ? 'ok' : 'no_workers',
         workerCount: Object.keys(cluster.workers).length,
-        cache: `${responseCache.size} entries`,
         queryCache: `${sharedQueryCache.size} entries`,
+        adaptiveCache: { promoted: promotedFingerprints.size, statsTracked: globalQueryStats.size },
         warmer: warmerProcess && !warmerProcess.killed ? 'running' : (warmerDone ? 'done' : 'idle'),
       };
 
@@ -456,12 +544,6 @@ if (cluster.isPrimary) {
         checks.memoryOk = pct < 90;
       } catch { checks.memory = 'unknown'; checks.memoryOk = true; }
 
-      // Cache hit rate
-      const cacheTotal = totalHits + totalMisses;
-      if (cacheTotal > 0) {
-        checks.cacheHitRate = `${Math.round(totalHits / cacheTotal * 100)}%`;
-      }
-
       const allOk = checks.workers === 'ok' && checks.memoryOk !== false && !String(checks.db).startsWith('error') && checks.db !== 'missing';
       const status = allOk ? 'healthy' : 'degraded';
 
@@ -480,7 +562,10 @@ if (cluster.isPrimary) {
     if (path === '/health') {
       if (workerPorts.length === 0) {
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ status: 'degraded', workers: 0, cache: responseCache.size }));
+        res.end(JSON.stringify({
+          status: 'degraded', workers: 0,
+          scaling: { ready: false, stable: recentCrashes.length < 3 },
+        }));
         return;
       }
       proxyToWorker(req, res);
@@ -493,20 +578,7 @@ if (cluster.isPrimary) {
       return;
     }
 
-    // GET: check shared cache first
-    if (req.method === 'GET') {
-      const entry = getCached(req.url);
-      if (entry) {
-        res.writeHead(200, {
-          'Content-Type': entry.contentType,
-          'Cache-Control': entry.cacheControl,
-          'X-Cache': 'HIT',
-        });
-        res.end(gunzipSync(entry.compressed));
-        return;
-      }
-    }
-
+    // All requests → proxy to workers (no in-memory page cache)
     proxyToWorker(req, res);
    } catch (err) {
     console.error(`[cluster] Primary handler error: ${err.message}`);
@@ -517,7 +589,7 @@ if (cluster.isPrimary) {
     }
    }
   }).listen(EXTERNAL_PORT, HOST, () => {
-    console.log(`[cluster] Caching proxy on :${EXTERNAL_PORT} (cache=${MAX_CACHE} entries, qcache=${QUERY_CACHE_MAX} max)`);
+    console.log(`[cluster] Proxy on :${EXTERNAL_PORT} (qcache=${QUERY_CACHE_MAX} max, adaptive=${ADAPTIVE_CACHE_MAX} max)`);
   });
 
   // ─── Management API ───
@@ -533,7 +605,6 @@ if (cluster.isPrimary) {
     const url = new URL(req.url, `http://localhost:${mgmtPort}`);
 
     if (req.method === 'GET' && url.pathname === '/_cluster/status') {
-      const total = totalHits + totalMisses;
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
         workers: Object.keys(cluster.workers).length,
@@ -542,15 +613,10 @@ if (cluster.isPrimary) {
         maxWorkers: MAX_WORKERS,
         pids: Object.values(cluster.workers).map(w => w.process.pid),
         workerPorts,
-        responseCache: {
-          size: responseCache.size,
-          maxSize: MAX_CACHE,
-          totalHits,
-          totalMisses,
-          hitRate: total > 0 ? Math.round(totalHits / total * 1000) / 1000 : 0,
-        },
         queryCache: {
-          size: sharedQueryCache.size,
+          explicit: sharedQueryCache.size,
+          adaptivePromoted: promotedFingerprints.size,
+          statsTracked: globalQueryStats.size,
           maxSize: QUERY_CACHE_MAX,
         },
         budget,
