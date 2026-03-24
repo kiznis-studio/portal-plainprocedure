@@ -58,6 +58,10 @@ function discoverDatabases(): Record<string, string> {
       paths[key.slice(0, -5)] = value;
     }
   }
+  // Fallback: if no DATABASE_PATH env var, check default mount point
+  if (!paths['DB'] && existsSync('/data/portal.db')) {
+    paths['DB'] = '/data/portal.db';
+  }
   return paths;
 }
 

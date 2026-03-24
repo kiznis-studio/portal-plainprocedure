@@ -82,7 +82,10 @@ export const GET: APIRoute = async ({ locals }) => {
     },
     warnings,
   }), {
-    status: allDbOk ? 200 : 503,
+    // Always return 200 — the JSON body has status: 'ok'|'degraded' for detailed state.
+    // Docker HEALTHCHECK, cluster readiness probe, and Kuma all expect 200.
+    // Returning 503 prevents worker registration → cascading failure.
+    status: 200,
     headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
   });
 };
