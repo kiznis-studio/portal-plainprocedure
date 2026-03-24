@@ -35,12 +35,21 @@ const failedSitemaps = [];
 
 try { mkdirSync(SITEMAP_CACHE_DIR, { recursive: true }); } catch {}
 
-// ─── Memory awareness ───
+// ─── Memory awareness (working-set, not raw cgroup) ───
+// Subtract inactive_file (reclaimable page cache) to avoid false pressure on
+// large-DB portals where SQLite reads inflate memory.current to 90%+.
 function containerMemoryPct() {
   try {
     const max = parseInt(readFileSync('/sys/fs/cgroup/memory.max', 'utf-8').trim());
     const cur = parseInt(readFileSync('/sys/fs/cgroup/memory.current', 'utf-8').trim());
-    return max > 0 ? cur / max : 0;
+    let inactiveFile = 0;
+    try {
+      const stat = readFileSync('/sys/fs/cgroup/memory.stat', 'utf-8');
+      const m = stat.match(/^inactive_file\s+(\d+)/m);
+      if (m) inactiveFile = parseInt(m[1], 10);
+    } catch {}
+    const workingSet = cur - inactiveFile;
+    return max > 0 ? workingSet / max : 0;
   } catch { return 0; }
 }
 

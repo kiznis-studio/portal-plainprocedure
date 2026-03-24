@@ -35,11 +35,21 @@ function isSitemapPath(p: string): boolean {
   return (p.includes('sitemap') || p === '/robots.txt') && (p.endsWith('.xml') || p === '/robots.txt');
 }
 
+// Working-set memory: memory.current minus reclaimable page cache (inactive_file).
+// Raw memory.current includes file page cache from SQLite reads, which inflates
+// usage to 90%+ on large-DB portals while actual app memory is 30-40%.
 function containerMemoryPct(): number {
   try {
     const max = parseInt(readFileSync('/sys/fs/cgroup/memory.max', 'utf-8').trim());
     const cur = parseInt(readFileSync('/sys/fs/cgroup/memory.current', 'utf-8').trim());
-    return max > 0 ? cur / max : 0;
+    let inactiveFile = 0;
+    try {
+      const stat = readFileSync('/sys/fs/cgroup/memory.stat', 'utf-8');
+      const m = stat.match(/^inactive_file\s+(\d+)/m);
+      if (m) inactiveFile = parseInt(m[1], 10);
+    } catch {}
+    const workingSet = cur - inactiveFile;
+    return max > 0 ? workingSet / max : 0;
   } catch { return 0; }
 }
 
@@ -211,9 +221,18 @@ function getSentryContext(path: string, method: string, elapsed?: number) {
   const memPct = containerMemoryPct();
   let limitMB = 0;
   let currentMB = 0;
+  let rawMB = 0;
   try {
     limitMB = Math.round(parseInt(readFileSync('/sys/fs/cgroup/memory.max', 'utf-8').trim()) / 1024 / 1024);
-    currentMB = Math.round(parseInt(readFileSync('/sys/fs/cgroup/memory.current', 'utf-8').trim()) / 1024 / 1024);
+    const rawBytes = parseInt(readFileSync('/sys/fs/cgroup/memory.current', 'utf-8').trim());
+    rawMB = Math.round(rawBytes / 1024 / 1024);
+    let inactiveFile = 0;
+    try {
+      const stat = readFileSync('/sys/fs/cgroup/memory.stat', 'utf-8');
+      const m = stat.match(/^inactive_file\s+(\d+)/m);
+      if (m) inactiveFile = parseInt(m[1], 10);
+    } catch {}
+    currentMB = Math.round((rawBytes - inactiveFile) / 1024 / 1024);
   } catch {}
   return {
     extra: {
@@ -223,6 +242,7 @@ function getSentryContext(path: string, method: string, elapsed?: number) {
       elapsed: elapsed ? Math.round(elapsed) : undefined,
       memoryPct: Math.round(memPct * 100),
       memoryMB: `${currentMB}/${limitMB}`,
+      memoryRawMB: rawMB,
       heapUsedMB: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
       rssMB: Math.round(process.memoryUsage().rss / 1024 / 1024),
       inflight,

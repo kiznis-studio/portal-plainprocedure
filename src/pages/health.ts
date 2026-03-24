@@ -7,19 +7,30 @@ import { dbMeta } from '../lib/d1-adapter';
 export const prerender = false;
 const startTime = Date.now();
 
-// Read cgroup memory for live usage
+// Read cgroup memory for live usage (subtract reclaimable page cache).
+// memory.current includes file page cache from SQLite reads, which the kernel
+// reclaims freely under pressure. Use working_set = current - inactive_file
+// (same formula as docker stats / Kubernetes memory metrics).
 function getContainerMemory() {
   try {
     const maxRaw = readFileSync('/sys/fs/cgroup/memory.max', 'utf-8').trim();
     const current = parseInt(readFileSync('/sys/fs/cgroup/memory.current', 'utf-8').trim());
+    let inactiveFile = 0;
+    try {
+      const stat = readFileSync('/sys/fs/cgroup/memory.stat', 'utf-8');
+      const m = stat.match(/^inactive_file\s+(\d+)/m);
+      if (m) inactiveFile = parseInt(m[1], 10);
+    } catch {}
+    const workingSet = current - inactiveFile;
     const limitBytes = maxRaw === 'max' ? null : parseInt(maxRaw, 10);
     const limitMB = limitBytes ? Math.round(limitBytes / 1048576) : null;
-    const currentMB = Math.round(current / 1048576);
+    const currentMB = Math.round(workingSet / 1048576);
+    const rawMB = Math.round(current / 1048576);
     const headroomMB = limitMB ? limitMB - currentMB : null;
     const usagePct = limitMB ? Math.round(currentMB / limitMB * 1000) / 1000 : null;
-    return { limitMB, currentMB, headroomMB, usagePct };
+    return { limitMB, currentMB, rawMB, headroomMB, usagePct };
   } catch {
-    return { limitMB: null, currentMB: null, headroomMB: null, usagePct: null };
+    return { limitMB: null, currentMB: null, rawMB: null, headroomMB: null, usagePct: null };
   }
 }
 

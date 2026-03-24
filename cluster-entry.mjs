@@ -68,6 +68,7 @@ if (cluster.isPrimary) {
   const SENTRY_RATE_LIMIT_MS = 60000;
 
   // Suppress transient deploy noise during container startup (proxy_502/503, slow queries).
+  // These fire during image swap and cache warming — not actionable.
   const STARTUP_GRACE_MS = parseInt(process.env.SENTRY_STARTUP_GRACE_MS || '120000', 10);
   const processStartTime = Date.now();
   const STARTUP_SUPPRESSED = new Set(['proxy_502', 'proxy_503', 'slow_query', 'worker_timeout']);
@@ -588,12 +589,23 @@ if (cluster.isPrimary) {
         }
       } catch (e) { checks.db = `error (${e.message})`; }
 
-      // Memory check — cgroup v2
+      // Memory check — cgroup v2 (subtract reclaimable page cache)
+      // memory.current includes file page cache from SQLite reads, which the kernel
+      // reclaims freely under pressure. Use working_set = current - inactive_file
+      // (same formula as docker stats / Kubernetes memory metrics).
       try {
         const max = parseInt(readFileSync('/sys/fs/cgroup/memory.max', 'utf-8').trim());
         const cur = parseInt(readFileSync('/sys/fs/cgroup/memory.current', 'utf-8').trim());
-        const pct = Math.round(cur / max * 100);
-        checks.memory = `${pct}% of ${Math.round(max / 1048576)}MB`;
+        let inactiveFile = 0;
+        try {
+          const stat = readFileSync('/sys/fs/cgroup/memory.stat', 'utf-8');
+          const m = stat.match(/^inactive_file\s+(\d+)/m);
+          if (m) inactiveFile = parseInt(m[1], 10);
+        } catch {}
+        const workingSet = cur - inactiveFile;
+        const pct = Math.round(workingSet / max * 100);
+        checks.memory = `${pct}% of ${Math.round(max / 1048576)}MB (working set)`;
+        checks.memoryRaw = `${Math.round(cur / max * 100)}% (incl. page cache)`;
         checks.memoryOk = pct < 90;
       } catch { checks.memory = 'unknown'; checks.memoryOk = true; }
 
