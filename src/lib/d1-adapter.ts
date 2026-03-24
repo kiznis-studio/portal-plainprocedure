@@ -29,10 +29,22 @@ export interface D1Database {
   prepare(sql: string): D1PreparedStatement;
 }
 
-// better-sqlite3 natively supports numbered params (?1, ?2) — no conversion needed.
-// Previous normalization (?N → ?) broke queries reusing the same param (e.g. ?1 twice).
-function normalizeParams(sql: string): string {
-  return sql;
+// Convert D1 numbered params (?1, ?2) to unnamed (?) for better-sqlite3,
+// and return a mapping so bind args can be expanded for reused params.
+// E.g. "WHERE a = ?1 OR b = ?1 LIMIT ?2" -> sql "WHERE a = ? OR b = ? LIMIT ?"
+//      indices [1, 1, 2] -> bind(x, y) expands to [x, x, y]
+function normalizeParams(sql: string): { sql: string; indices: number[] } {
+  const indices: number[] = [];
+  const normalized = sql.replace(/\?(\d+)/g, (_m, num) => {
+    indices.push(parseInt(num, 10));
+    return '?';
+  });
+  return { sql: normalized, indices };
+}
+
+function expandParams(params: unknown[], indices: number[]): unknown[] {
+  if (indices.length === 0) return params; // plain ? params -- no expansion
+  return indices.map(i => params[i - 1]); // ?1 -> params[0], ?2 -> params[1], etc.
 }
 
 // Exported metadata for health endpoint
@@ -213,11 +225,12 @@ export function createD1Adapter(dbPath: string): D1Database {
 
   return {
     prepare(sql: string): D1PreparedStatement {
-      const normalized = normalizeParams(sql);
+      const { sql: normalized, indices } = normalizeParams(sql);
       const stmt = getStmt(normalized);
       const fp = makeFingerprint(normalized);
 
       function makeBindResult(params: unknown[]) {
+        params = expandParams(params, indices);
         const ph = makeParamsHash(params);
 
         return {
