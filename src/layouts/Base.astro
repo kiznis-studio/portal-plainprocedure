@@ -140,6 +140,25 @@ const breadcrumbSchema = (() => {
 
     <!-- AdSense (also deploys Privacy & Messaging consent banners configured in AdSense console) -->
     <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7887321168925353" crossorigin="anonymous"></script>
+    <!-- Speculation Rules API — prefetch same-origin pages on hover for near-instant navigation.
+         Chrome 121+, Edge 121+. Other browsers ignore this script tag (progressive enhancement).
+         "moderate" eagerness = triggers on hover/pointerdown, not on visibility. -->
+    <script is:inline type="speculationrules">
+    {
+      "prefetch": [{
+        "where": {
+          "and": [
+            { "href_matches": "/*" },
+            { "not": { "href_matches": "/health" } },
+            { "not": { "href_matches": "/api/*" } },
+            { "not": { "href_matches": "/ping" } }
+          ]
+        },
+        "eagerness": "moderate"
+      }]
+    }
+    </script>
+
   </head>
   <body class="min-h-screen flex flex-col">
     <Header />
