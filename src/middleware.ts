@@ -1,10 +1,20 @@
+// Unified middleware — handles both single-DB and multi-DB portals automatically.
+// Single-DB: set DATABASE_PATH=/data/portal.db → discovers as { DB: adapter }
+// Multi-DB: set DATABASE_PATH + DATABASE_RENT_PATH etc → discovers all
 import { defineMiddleware } from 'astro:middleware';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import http from 'node:http';
 import { createD1Adapter, getAdaptiveCacheStats } from './lib/d1-adapter';
+import type { D1Database } from './lib/d1-adapter';
+
+// Try to import warmQueryCache — portals without it skip in-process warming
+let _warmQueryCache: ((arg: any) => Promise<void>) | null = null;
+try {
+  const dbModule = await import('./lib/db');
+  if (typeof dbModule.warmQueryCache === 'function') _warmQueryCache = dbModule.warmQueryCache;
+} catch { /* db.ts may not export warmQueryCache */ }
 
 // --- Sitemap disk cache ---
-// Sitemaps are immutable between deploys (data doesn't change during container lifetime).
-// Generate once → store on disk → serve instantly. Container restart clears /tmp naturally.
 const SITEMAP_CACHE_DIR = '/tmp/sitemap-cache';
 try { mkdirSync(SITEMAP_CACHE_DIR, { recursive: true }); } catch {}
 
@@ -13,8 +23,7 @@ function sitemapCachePath(urlPath: string): string {
 }
 
 function getSitemapFromDisk(urlPath: string): string | null {
-  const fp = sitemapCachePath(urlPath);
-  try { return readFileSync(fp, 'utf-8'); } catch { return null; }
+  try { return readFileSync(sitemapCachePath(urlPath), 'utf-8'); } catch { return null; }
 }
 
 function saveSitemapToDisk(urlPath: string, body: string): void {
@@ -25,18 +34,55 @@ function isSitemapPath(p: string): boolean {
   return (p.includes('sitemap') || p === '/robots.txt') && (p.endsWith('.xml') || p === '/robots.txt');
 }
 
-// --- DB initialization ---
-const DATABASE_PATH = process.env.DATABASE_PATH || '/data/portal.db';
-let db: ReturnType<typeof createD1Adapter> | null = null;
-function getDb() {
-  if (!db) {
-    if (!existsSync(DATABASE_PATH)) return null as any;
-    db = createD1Adapter(DATABASE_PATH);
-  }
-  return db;
+function containerMemoryPct(): number {
+  try {
+    const max = parseInt(readFileSync('/sys/fs/cgroup/memory.max', 'utf-8').trim());
+    const cur = parseInt(readFileSync('/sys/fs/cgroup/memory.current', 'utf-8').trim());
+    return max > 0 ? cur / max : 0;
+  } catch { return 0; }
 }
 
-// --- Inflight counter (metrics for /health + TRM) ---
+// --- DB auto-discovery ---
+// Discovers databases from env vars. Single-DB portals get { DB: adapter }.
+// Multi-DB portals get { DB: primary, DB_RENT: rent, ... }.
+const dbInstances: Record<string, ReturnType<typeof createD1Adapter> | null> = {};
+
+function discoverDatabases(): Record<string, string> {
+  const paths: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (!value) continue;
+    if (key === 'DATABASE_PATH') { paths['DB'] = value; }
+    else if (key.startsWith('DATABASE_') && key.endsWith('_PATH')) {
+      paths['DB_' + key.slice(9, -5)] = value;
+    } else if (key.startsWith('DB_') && key.endsWith('_PATH')) {
+      paths[key.slice(0, -5)] = value;
+    }
+  }
+  return paths;
+}
+
+const DB_PATHS = discoverDatabases();
+const IS_MULTI_DB = Object.keys(DB_PATHS).length > 1;
+
+function getDb(key: string): ReturnType<typeof createD1Adapter> | null {
+  if (key in dbInstances) return dbInstances[key];
+  const path = DB_PATHS[key];
+  if (!path || !existsSync(path)) { dbInstances[key] = null; return null; }
+  dbInstances[key] = createD1Adapter(path);
+  return dbInstances[key];
+}
+
+function getAllDbs(): Record<string, D1Database> {
+  const env: Record<string, D1Database> = {};
+  for (const key of Object.keys(DB_PATHS)) { const d = getDb(key); if (d) env[key] = d; }
+  return env;
+}
+
+if (IS_MULTI_DB) {
+  console.log(`[middleware] Multi-DB: ${Object.keys(DB_PATHS).length} databases: ${Object.keys(DB_PATHS).join(', ')}`);
+}
+
+// --- Inflight counter ---
 let inflight = 0;
 
 // --- Event loop lag (sampled every 2s) ---
@@ -47,44 +93,119 @@ const lagInterval = setInterval(() => {
 }, 2000);
 lagInterval.unref();
 
-// --- Rolling demand metrics (15s window, counter-based) ---
+// --- Rolling demand metrics (15s window) ---
 let reqCount = 0;
 let latencySum = 0;
 let windowStart = Date.now();
 
-function recordRequest(latencyMs: number) {
-  reqCount++;
-  latencySum += latencyMs;
-}
+function recordRequest(latencyMs: number) { reqCount++; latencySum += latencyMs; }
 
 function getRollingMetrics() {
   const now = Date.now();
   const elapsed = (now - windowStart) / 1000;
   const rate = elapsed > 0 ? Math.round(reqCount / elapsed * 100) / 100 : 0;
   const avg = reqCount > 0 ? Math.round(latencySum / reqCount) : 0;
-  // Reset window every 15s
-  if (now - windowStart > 15000) {
-    reqCount = 0;
-    latencySum = 0;
-    windowStart = now;
-  }
+  if (now - windowStart > 15000) { reqCount = 0; latencySum = 0; windowStart = now; }
   return { requestRate: rate, avgLatency: avg };
 }
 
-// Workers are always ready — warming is handled by the warmer process
-let cacheWarmed = true;
-let cacheWarmedAt: string | null = new Date().toISOString();
+// --- Background query cache warming ---
+// Only worker 0 (CACHE_WARM_WORKER=1) runs in-process warming.
+// Calls warmQueryCache from db.ts — handles both single-DB and multi-DB signatures.
+let cacheWarmed = false;
+let cacheWarmedAt: string | null = null;
+const IS_WARM_WORKER = process.env.CACHE_WARM_WORKER !== '0';
+
+function startBackgroundWarming(): void {
+  if (!IS_WARM_WORKER || !_warmQueryCache) {
+    cacheWarmed = true;
+    cacheWarmedAt = new Date().toISOString();
+    return;
+  }
+  const env = getAllDbs();
+  if (Object.keys(env).length === 0) { cacheWarmed = true; return; }
+
+  (async () => {
+    try {
+      // Multi-DB portals: warmQueryCache(env: Record<string, D1Database>)
+      // Single-DB portals: warmQueryCache(db: D1Database) — pass env, fallback to primary DB
+      try {
+        await _warmQueryCache!(env);
+      } catch {
+        // Fallback: old single-DB signature expects a D1Database directly
+        const primaryDb = env.DB || Object.values(env)[0];
+        if (primaryDb) await _warmQueryCache!(primaryDb);
+      }
+      cacheWarmedAt = new Date().toISOString();
+    } catch (err) {
+      console.error('[cache] Warming failed:', err);
+    }
+    cacheWarmed = true;
+  })();
+}
+startBackgroundWarming();
+
+// --- Sitemap background warming (self-fetch via HTTP) ---
+let sitemapsWarmed = false;
+
+function warmSitemaps(): void {
+  if (!IS_WARM_WORKER) return;
+  const port = parseInt(process.env.PORT || '4321');
+
+  function selfFetch(urlPath: string): Promise<string> {
+    return new Promise((resolve) => {
+      const req = http.get({ hostname: '127.0.0.1', port, path: urlPath, timeout: 30000 }, (res) => {
+        let body = '';
+        res.on('data', (c: Buffer) => body += c);
+        res.on('end', () => resolve(body));
+      });
+      req.on('error', () => resolve(''));
+      req.on('timeout', () => { req.destroy(); resolve(''); });
+    });
+  }
+
+  const checkInterval = setInterval(async () => {
+    if (!cacheWarmed) return; // wait for query cache to warm first
+    clearInterval(checkInterval);
+    try {
+      const indexXml = await selfFetch('/sitemap-index.xml');
+      if (!indexXml.includes('<sitemapindex') && !indexXml.includes('<urlset')) {
+        const fallback = await selfFetch('/sitemap.xml');
+        if (fallback.includes('<urlset')) saveSitemapToDisk('/sitemap.xml', fallback);
+        sitemapsWarmed = true;
+        return;
+      }
+      saveSitemapToDisk('/sitemap-index.xml', indexXml);
+      const locs = [...indexXml.matchAll(/<loc>(.*?)<\/loc>/g)].map(m => {
+        try { return new URL(m[1]).pathname; } catch { return null; }
+      }).filter(Boolean) as string[];
+      let warmed = 1;
+      for (const loc of locs) {
+        const memPct = containerMemoryPct();
+        if (memPct > 0.85) await new Promise(r => setTimeout(r, 30000));
+        else if (memPct > 0.70) await new Promise(r => setTimeout(r, 5000));
+        if (getSitemapFromDisk(loc)) { warmed++; continue; }
+        const xml = await selfFetch(loc);
+        if (xml && xml.length > 50) { saveSitemapToDisk(loc, xml); warmed++; }
+        await new Promise(r => setTimeout(r, 2000));
+      }
+      console.log(`[sitemap-cache] Warmed ${warmed} sitemaps to disk`);
+    } catch (err) {
+      console.error('[sitemap-cache] Warming failed:', (err as Error).message);
+    }
+    sitemapsWarmed = true;
+  }, 2000);
+  checkInterval.unref();
+}
+warmSitemaps();
 
 export { inflight, eventLoopLag, cacheWarmed, cacheWarmedAt, getRollingMetrics, getAdaptiveCacheStats };
 
-// --- Edge TTL: fast startsWith checks instead of regex ---
+// --- Edge TTL ---
 function getEdgeTtl(p: string): number {
-  const c = p.charCodeAt(1); // first char after '/'
-  // Detail pages: 24h (86400s)
+  const c = p.charCodeAt(1);
   if (c === 112 || c === 101 || c === 102 || c === 100 || c === 98 || c === 97 ||
-      c === 108 || c === 111 || c === 106 || c === 122) {
-    return 86400;
-  }
+      c === 108 || c === 111 || c === 106 || c === 122) return 86400;
   if (p.startsWith('/s') || p.startsWith('/c') || p.startsWith('/m')) return 86400;
   if (p.startsWith('/ranking') || p.startsWith('/guide')) return 21600;
   return 3600;
@@ -92,17 +213,14 @@ function getEdgeTtl(p: string): number {
 
 export const onRequest = defineMiddleware(async (context, next) => {
   const path = context.url.pathname;
-  (context.locals as any).runtime = { env: { DB: getDb() } };
+  (context.locals as any).runtime = { env: getAllDbs() };
 
-  // Fast-path: health endpoint — always available
   if (path === '/health') return next();
-
-  // Fast-path: static assets + cluster management
-  if (path.charCodeAt(1) === 95) return next(); // starts with '/_'
+  if (path.charCodeAt(1) === 95) return next();
   if (path.startsWith('/fav')) return next();
 
   if (context.request.method === 'GET') {
-    // L0: Sitemap disk cache — sitemaps are immutable between deploys
+    // L0: Sitemap disk cache
     if (isSitemapPath(path)) {
       const diskCached = getSitemapFromDisk(path);
       if (diskCached) {
@@ -120,9 +238,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
       const response = await next();
       const elapsed = performance.now() - start;
       recordRequest(elapsed);
-      if (elapsed > 500) {
-        console.warn(`[slow] ${path} ${Math.round(elapsed)}ms lag=${Math.round(eventLoopLag)}ms`);
-      }
+      if (elapsed > 500) console.warn(`[slow] ${path} ${Math.round(elapsed)}ms lag=${Math.round(eventLoopLag)}ms`);
 
       if (response.status === 200) {
         const ct = response.headers.get('content-type') || '';
@@ -130,14 +246,12 @@ export const onRequest = defineMiddleware(async (context, next) => {
           const ttl = ct.includes('xml') ? 86400 : getEdgeTtl(path);
           const cc = `public, max-age=300, s-maxage=${ttl}`;
 
-          // Sitemaps: persist to disk for future requests
           if (isSitemapPath(path)) {
             const body = await response.text();
             if (body.length > 50) saveSitemapToDisk(path, body);
             return new Response(body, { headers: { 'Content-Type': ct, 'Cache-Control': cc, 'X-Cache': 'MISS' } });
           }
 
-          // HTML: set edge cache headers only — no in-memory cache
           return new Response(response.body, {
             headers: { 'Content-Type': ct, 'Cache-Control': cc },
           });
