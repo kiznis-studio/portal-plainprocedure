@@ -67,9 +67,19 @@ if (cluster.isPrimary) {
   const sentryRateLimit = new Map(); // eventType → { lastSent, suppressedCount }
   const SENTRY_RATE_LIMIT_MS = 60000;
 
+  // Suppress transient deploy noise during container startup (proxy_502/503, slow queries).
+  const STARTUP_GRACE_MS = parseInt(process.env.SENTRY_STARTUP_GRACE_MS || '120000', 10);
+  const processStartTime = Date.now();
+  const STARTUP_SUPPRESSED = new Set(['proxy_502', 'proxy_503', 'slow_query', 'worker_timeout']);
+
   function reportToSentry(eventType, extra = {}) {
     if (!Sentry) return;
     const now = Date.now();
+
+    // During startup grace period, suppress known deploy-transient events
+    if (now - processStartTime < STARTUP_GRACE_MS && STARTUP_SUPPRESSED.has(eventType)) {
+      return;
+    }
     const state = sentryRateLimit.get(eventType) || { lastSent: 0, suppressedCount: 0 };
 
     if (now - state.lastSent < SENTRY_RATE_LIMIT_MS) {
