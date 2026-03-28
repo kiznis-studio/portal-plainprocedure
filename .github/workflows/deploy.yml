@@ -16,6 +16,7 @@ concurrency:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   IMAGE: ghcr.io/${{ github.repository }}
+  DOMAIN: plainprocedure.com
 
 jobs:
   build-and-deploy:
@@ -27,7 +28,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
+        with:
+          fetch-depth: 2
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -84,3 +86,70 @@ jobs:
             done && \
             rm -rf \$DCFG && \
             echo 'ERROR: Deploy failed after 3 attempts' && exit 1"
+
+      - name: Notify search engines of content changes
+        if: success() && env.DOMAIN != ''
+        env:
+          INDEXNOW_KEY: "766538bdafcc4bf2b8f3a2d4d4d0b9fa"
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          CONTENT_PATTERNS='src/pages/.*\.astro|src/components/.*\.astro|public/llms\.txt|public/robots\.txt|astro\.config\.mjs'
+          SKIP_PATTERNS='health\.ts|ping\.ts|sitemap-.*\.ts|middleware\.ts|d1-adapter|disk-cache|memory-budget'
+
+          # Try multiple diff methods for shallow clone compatibility
+          CHANGED=""
+          if [ -n "$BEFORE_SHA" ] && [ "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ]; then
+            CHANGED=$(git diff --name-only "$BEFORE_SHA" HEAD 2>/dev/null || true)
+          fi
+          if [ -z "$CHANGED" ]; then
+            CHANGED=$(git log -1 --name-only --pretty=format: 2>/dev/null || true)
+          fi
+          [ -z "$CHANGED" ] && echo "No diff available — skipping" && exit 0
+
+          CONTENT_FILES=$(echo "$CHANGED" | grep -E "$CONTENT_PATTERNS" | grep -Ev "$SKIP_PATTERNS" || true)
+
+          if [ -z "$CONTENT_FILES" ]; then
+            echo "::notice::No content changes — search engine notification skipped"
+            exit 0
+          fi
+
+          echo "Content changes detected:"
+          echo "$CONTENT_FILES"
+
+          URLS=""
+          HAS_COMPONENT_CHANGE=false
+
+          while IFS= read -r file; do
+            if [[ "$file" == src/components/* ]]; then
+              HAS_COMPONENT_CHANGE=true
+              continue
+            fi
+
+            route="${file#src/pages/}"
+            route="${route%.astro}"
+            route="${route%.ts}"
+            [[ "$route" == *"["* ]] && continue
+            route="${route%/index}"
+            [ -z "$route" ] && route=""
+
+            URLS="${URLS}\"https://${DOMAIN}/${route}\","
+          done <<< "$CONTENT_FILES"
+
+          if [ "$HAS_COMPONENT_CHANGE" = true ]; then
+            URLS="\"https://${DOMAIN}/\",${URLS}"
+          fi
+
+          echo "$CONTENT_FILES" | grep -q 'public/llms.txt' && URLS="${URLS}\"https://${DOMAIN}/llms.txt\","
+          echo "$CONTENT_FILES" | grep -q 'public/robots.txt' && URLS="${URLS}\"https://${DOMAIN}/robots.txt\","
+          echo "$CONTENT_FILES" | grep -q 'astro.config.mjs' && URLS="${URLS}\"https://${DOMAIN}/\","
+
+          URLS=$(echo "$URLS" | tr ',' '\n' | sort -u | grep -v '^$' | paste -sd ',' -)
+          [ -z "$URLS" ] && echo "No submittable URLs — skipping" && exit 0
+
+          echo "Submitting to IndexNow: ${URLS}"
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+            "https://api.indexnow.org/indexnow" \
+            -H "Content-Type: application/json; charset=utf-8" \
+            -d "{\"host\":\"${DOMAIN}\",\"key\":\"${INDEXNOW_KEY}\",\"keyLocation\":\"https://${DOMAIN}/${INDEXNOW_KEY}.txt\",\"urlList\":[${URLS}]}" \
+            || echo "000")
+          echo "IndexNow response: HTTP ${HTTP_CODE}"
